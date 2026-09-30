@@ -1,0 +1,1 @@
+# qinto-platforms
