@@ -1,0 +1,16 @@
+{
+  "//": "The project tsconfig excludes src/admin, so the admin React page was never typechecked. This config checks all of src/ under strict. storefront/ is a copy-paste kit that imports from the host app (@lib/*, next/navigation), so it is typechecked in the storefront it is copied into, not here.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "jsx": "react-jsx"
+  },
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    ".medusa"
+  ]
+}

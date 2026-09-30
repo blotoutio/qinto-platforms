@@ -1,0 +1,127 @@
+{
+  "name": "@blotoutio/medusa-plugin-blotout",
+  "version": "0.1.0",
+  "description": "Blotout's Medusa plugin: send storefront and order events to Qinto — first-party analytics and identity, with an admin connect flow.",
+  "author": "Blotout",
+  "license": "MIT",
+  "files": [
+    ".medusa/server",
+    "CHANGELOG.md",
+    "LICENSE",
+    "MERCHANT-SETUP.md",
+    "README.md",
+    "storefront"
+  ],
+  "exports": {
+    "./package.json": "./package.json",
+    "./storefront/autocapture": "./storefront/autocapture.tsx",
+    "./storefront/context-route": "./storefront/context-route.ts",
+    "./storefront/*": "./storefront/*",
+    "./.medusa/server/src/modules/*": "./.medusa/server/src/modules/*/index.js",
+    "./modules/*": "./.medusa/server/src/modules/*/index.js",
+    "./*": "./.medusa/server/src/*.js",
+    "./admin": {
+      "import": "./.medusa/server/src/admin/index.mjs",
+      "require": "./.medusa/server/src/admin/index.js",
+      "default": "./.medusa/server/src/admin/index.js"
+    }
+  },
+  "keywords": [
+    "medusa",
+    "medusa-plugin",
+    "medusa-v2",
+    "medusa-plugin-analytics",
+    "qinto",
+    "blotout",
+    "analytics",
+    "edgetag",
+    "medusa-plugin-integration"
+  ],
+  "scripts": {
+    "build": "medusa plugin:build",
+    "dev": "medusa plugin:develop",
+    "lint": "medusa lint",
+    "prepublishOnly": "medusa plugin:build",
+    "typecheck": "tsc -p tsconfig.check.json",
+    "test": "tsc storefront/lib/qinto/cart-diff.ts storefront/lib/qinto/truid.ts storefront/lib/qinto/form-traits.ts --outDir .test-build --module es2022 --target es2022 --moduleResolution bundler --skipLibCheck && node test/prepare.mjs && node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "@medusajs/admin-sdk": "2.21.0",
+    "@medusajs/cli": "2.21.0",
+    "@medusajs/eslint-plugin": "2.21.0",
+    "@medusajs/framework": "2.21.0",
+    "@medusajs/icons": "2.21.0",
+    "@medusajs/medusa": "2.21.0",
+    "@medusajs/test-utils": "2.21.0",
+    "@medusajs/ui": "4.2.4",
+    "@swc/core": "^1.7.28",
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.3.2",
+    "@types/react-dom": "^18.2.25",
+    "eslint": "^9.0.0",
+    "jiti": "^2.0.0",
+    "prop-types": "^15.8.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.2",
+    "vite": "^7.3.6",
+    "yalc": "^1.0.0-pre.53"
+  },
+  "peerDependencies": {
+    "@medusajs/admin-sdk": "^2.21.0",
+    "@medusajs/framework": "^2.21.0",
+    "@medusajs/icons": "^2.21.0",
+    "@medusajs/medusa": "^2.21.0",
+    "@medusajs/ui": "^4.2.4",
+    "react": "^18.2.0 || ^19.0.0",
+    "react-dom": "^18.2.0 || ^19.0.0",
+    "next": "^14.0.0 || ^15.0.0",
+    "@medusajs/types": "^2.21.0"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "packageManager": "npm@11.6.1",
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    },
+    "next": {
+      "optional": true
+    },
+    "@medusajs/types": {
+      "optional": true
+    },
+    "@medusajs/admin-sdk": {
+      "optional": true
+    },
+    "@medusajs/framework": {
+      "optional": true
+    },
+    "@medusajs/icons": {
+      "optional": true
+    },
+    "@medusajs/medusa": {
+      "optional": true
+    },
+    "@medusajs/ui": {
+      "optional": true
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/blotoutio/qinto-platforms.git",
+    "directory": "medusa"
+  },
+  "homepage": "https://github.com/blotoutio/qinto-platforms/tree/main/medusa#readme",
+  "bugs": {
+    "url": "https://github.com/blotoutio/qinto-platforms/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

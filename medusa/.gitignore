@@ -1,0 +1,11 @@
+node_modules
+.medusa
+.test-build
+*.tgz
+
+.env
+*.tsbuildinfo
+coverage
+
+.DS_Store
+.idea
