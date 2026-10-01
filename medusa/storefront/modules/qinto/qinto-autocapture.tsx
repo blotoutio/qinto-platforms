@@ -16,6 +16,13 @@ import {
 } from "../../lib/qinto/mapping"
 import { NO_CART, diffEvents, snapshotOf, type Snapshot } from "../../lib/qinto/cart-diff"
 import { traitsFrom } from "../../lib/qinto/form-traits"
+import {
+  isCheckoutPath,
+  orderIdOfPath,
+  productHandleOf,
+  splitCountry,
+  type RouteConfig,
+} from "../../lib/qinto/routes"
 import type { HttpTypes } from "@medusajs/types"
 
 /**
@@ -120,7 +127,7 @@ const context = async <T,>(query: string): Promise<T | null> => {
   }
 }
 
-const Capture = () => {
+const Capture = ({ routes }: { routes?: RouteConfig }) => {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const lastPageView = useRef<string | null>(null)
@@ -180,8 +187,7 @@ const Capture = () => {
     }, 0)
 
     const segments = pathname.split("/").filter(Boolean)
-    const country = /^[a-z]{2}$/i.test(segments[0] ?? "") ? segments[0] : null
-    const rest = country === null ? segments : segments.slice(1)
+    const { country, rest } = splitCountry(segments, routes?.countryPrefix)
 
     /**
      * Did this navigation *enter* the checkout, rather than move around inside it?
@@ -191,15 +197,18 @@ const Capture = () => {
      * checkout. Recorded for every route, not just checkout, or leaving and returning would look
      * like staying.
      */
-    const onCheckout = rest[0] === "checkout"
+    const onCheckout = isCheckoutPath(routes, rest, pathname)
     const wasOnCheckout = readStore<boolean>(ON_CHECKOUT_KEY, false)
     const enteredCheckout = onCheckout && !wasOnCheckout
     writeStore(ON_CHECKOUT_KEY, onCheckout)
 
     void (async () => {
-      if (rest[0] === "products" && rest[1]) {
+      const productHandle = productHandleOf(routes, rest, pathname)
+      const confirmedOrderId = productHandle === null ? orderIdOfPath(routes, rest, pathname) : null
+
+      if (productHandle !== null) {
         const body = await context<{ product: HttpTypes.StoreProduct | null }>(
-          `kind=product&handle=${encodeURIComponent(rest[1])}${country ? `&country=${country}` : ""}`
+          `kind=product&handle=${encodeURIComponent(productHandle)}${country ? `&country=${country}` : ""}`
         )
         const product = body?.product ?? null
         if (product !== null) {
@@ -221,9 +230,9 @@ const Capture = () => {
       }
 
       // `/order/<id>/confirmed` — the conversion.
-      else if (rest[0] === "order" && rest[1] && rest[2] === "confirmed") {
+      else if (confirmedOrderId !== null) {
         const body = await context<{ order: HttpTypes.StoreOrder | null }>(
-          `kind=order&id=${encodeURIComponent(rest[1])}`
+          `kind=order&id=${encodeURIComponent(confirmedOrderId)}`
         )
         const order = body?.order ?? null
         if (order !== null) {
@@ -252,7 +261,7 @@ const Capture = () => {
         track("InitiateCheckout", cartEvent(cart))
       }
     })()
-  }, [pathname, searchParams])
+  }, [pathname, searchParams, routes])
 
   /**
    * Identifies a signed-in shopper, once per session per customer.
@@ -397,7 +406,7 @@ const Capture = () => {
   return null
 }
 
-const QintoAutoCapture = () => {
+const QintoAutoCapture = ({ routes }: { routes?: RouteConfig } = {}) => {
   const [ready, setReady] = useState(getQintoUrl() !== null)
   const injected = useRef(false)
 
@@ -448,7 +457,7 @@ const QintoAutoCapture = () => {
 
   return (
     <Suspense fallback={null}>
-      <Capture />
+      <Capture routes={routes} />
     </Suspense>
   )
 }

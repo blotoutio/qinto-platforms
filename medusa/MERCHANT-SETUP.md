@@ -1,4 +1,4 @@
-# Setting up medusa-plugin-blotout for MedusaJS
+# Setting up @blotout/platform-medusa for MedusaJS
 
 This gets a MedusaJS store sending events to Qinto.
 
@@ -7,14 +7,14 @@ This gets a MedusaJS store sending events to Qinto.
 MedusaJS 2.21.0 or newer, Node 20.19+ or 22.12+, and a Next.js 14 or 15 storefront on the App Router.
 `COOKIE_SECRET` has to be set on the backend and every Medusa install already has one.
 
-The capture component reads the Medusa starter's URL shape, so `/[countryCode]/products/[handle]`,
-`/[countryCode]/checkout` and `/[countryCode]/order/[id]/confirmed`. If you kept those paths it works
-as is. If you renamed them, read [Custom storefront routes](#custom-storefront-routes) at the end.
+Three of the nine events are recognised from the URL, and they default to the Medusa starter's
+shapes. If your product, checkout and order pages live somewhere else, you configure them in one
+prop. See [Custom storefront routes](#custom-storefront-routes) at the end.
 
 ## Backend
 
 ```bash
-npm install @blotoutio/medusa-plugin-blotout
+npm install @blotout/platform-medusa
 ```
 
 Register it in `medusa-config.ts`.
@@ -25,7 +25,7 @@ module.exports = defineConfig({
   admin: {
     vite: () => ({ resolve: { dedupe: ["react", "react-dom"] } }),
   },
-  plugins: ["@blotoutio/medusa-plugin-blotout"],
+  plugins: ["@blotout/platform-medusa"],
 })
 ```
 
@@ -49,7 +49,7 @@ Nothing gets copied into your source tree. The storefront installs the same pack
 it, so fixes reach you through `npm update`.
 
 ```bash
-npm install @blotoutio/medusa-plugin-blotout
+npm install @blotout/platform-medusa
 ```
 
 The package ships TypeScript source so you can read and debug it, which means Next has to be told to
@@ -57,7 +57,7 @@ compile it. In `next.config.js`:
 
 ```js
 const nextConfig = {
-  transpilePackages: ["@blotoutio/medusa-plugin-blotout"],
+  transpilePackages: ["@blotout/platform-medusa"],
   // ...the rest of your config
 }
 ```
@@ -67,7 +67,7 @@ mounted across navigations and the component needs to remember what the cart loo
 ago.
 
 ```tsx
-import QintoAutoCapture from "@blotoutio/medusa-plugin-blotout/storefront/autocapture"
+import QintoAutoCapture from "@blotout/platform-medusa/storefront/autocapture"
 
 <body>
   <QintoAutoCapture />
@@ -78,7 +78,7 @@ import QintoAutoCapture from "@blotoutio/medusa-plugin-blotout/storefront/autoca
 Then add one file, `src/app/api/qinto/context/route.ts`.
 
 ```ts
-export { GET } from "@blotoutio/medusa-plugin-blotout/storefront/context-route"
+export { GET } from "@blotout/platform-medusa/storefront/context-route"
 ```
 
 It issues the first-party `truid` cookie.
@@ -155,26 +155,64 @@ above.
 
 ## Custom storefront routes
 
-The component works out products, checkout and order confirmation from the URL.
+Six of the nine events come from cart and customer state, so they work whatever your URLs look like.
+The other three are recognised from the path, and these are the shapes assumed by default.
 
-| Page | Expected path |
+| Event | Default path |
 |---|---|
-| Product | `/[countryCode]/products/[handle]` |
-| Checkout | `/[countryCode]/checkout` |
-| Order confirmation | `/[countryCode]/order/[id]/confirmed` |
+| `ViewContent` | `/[countryCode]/products/[handle]` |
+| `InitiateCheckout` | `/[countryCode]/checkout` |
+| `Purchase` | `/[countryCode]/order/[id]/confirmed` |
 
-A storefront with no country prefix is handled automatically. But if you renamed these segments, say
-`/shop/[handle]` instead of `/products/[handle]`, then `ViewContent`, `InitiateCheckout` and
-`Purchase` won't fire. `PageView`, `AddToCart` and `RemoveFromCart` still will, because those come
-from cart state and not from the URL.
+If you kept those you don't need this section. A storefront with no country prefix is handled
+automatically. If you renamed them, pass `routes` to the component and the three come back.
 
-Tell us if that's your setup. Making the mapping configurable is easy and we'd rather do that than
-have you fork the component.
+```tsx
+<QintoAutoCapture
+  routes={{
+    product: "wiper-blades/:make/:model",
+    checkout: "shop/checkout",
+    order: "shop/order/:id",
+  }}
+/>
+```
+
+`:name` takes one segment and `*` takes everything left. Matching is a prefix, so `"shop/checkout"`
+also matches `/shop/checkout/payment`, which is what you want when checkout steps live under the same
+path.
+
+When a product pattern captures more than one segment they're joined with `-`, so
+`/wiper-blades/toyota/corolla` looks up the handle `toyota-corolla`. The same applies to an order id.
+
+If your paths don't fit a pattern, pass a function instead. It gets the path segments with any
+country prefix already removed, and returns the handle or id to look up, or `null` for no match.
+
+```tsx
+routes={{
+  product: (segments) =>
+    segments[0] === "p" && segments[1] ? segments[1].split("--")[0] : null,
+}}
+```
+
+Set an entry to `false` if your storefront has no such page, and that event stops firing rather than
+matching something it shouldn't.
+
+### The country prefix
+
+By default any two-letter first segment is read as a country code and skipped. If your storefront has
+no country prefix and a real two-letter page, such as `/hr/jobs`, say so or that page will be
+misread.
+
+```tsx
+routes={{ countryPrefix: false }}
+// or, for a storefront using locale codes
+routes={{ countryPrefix: (segment) => segment.includes("-") }}
+```
 
 ## Updating and removing
 
 ```bash
-npm update @blotoutio/medusa-plugin-blotout   # both apps
+npm update @blotout/platform-medusa   # both apps
 npx medusa db:migrate                         # backend only
 ```
 

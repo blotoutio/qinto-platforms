@@ -1,10 +1,10 @@
-# @blotoutio/medusa-plugin-blotout
+# @blotout/platform-medusa
 
 **By [Blotout](https://blotout.io).** Connects your Medusa store to **Qinto**, Blotout's
 first-party analytics and identity platform, and sends your storefront and order events there —
 without an ad blocker in the way.
 
-The package is `@blotoutio/medusa-plugin-blotout`; the service it talks to is Qinto, which is what you will
+The package is `@blotout/platform-medusa`; the service it talks to is Qinto, which is what you will
 see named throughout the admin and in your Qinto dashboard.
 
 Install it, paste your Qinto URL in the Medusa admin, mount one component in your storefront.
@@ -38,7 +38,7 @@ holds no Qinto credential — there is no column for one.
 ## 1. Install
 
 ```bash
-npm install @blotoutio/medusa-plugin-blotout
+npm install @blotout/platform-medusa
 ```
 
 Add it to `medusa-config.ts`:
@@ -50,7 +50,7 @@ module.exports = defineConfig({
     // Required. Without it the Blotout admin page will not render — see the note below.
     vite: () => ({ resolve: { dedupe: ["react", "react-dom"] } }),
   },
-  plugins: ["@blotoutio/medusa-plugin-blotout"],
+  plugins: ["@blotout/platform-medusa"],
 })
 ```
 
@@ -117,14 +117,14 @@ updates reach the capture logic through `npm update` like any other dependency. 
 storefront's root:
 
 ```bash
-npm install @blotoutio/medusa-plugin-blotout
+npm install @blotout/platform-medusa
 ```
 
 Let Next compile the package's TypeScript, in `next.config.js`:
 
 ```js
 const nextConfig = {
-  transpilePackages: ["@blotoutio/medusa-plugin-blotout"],
+  transpilePackages: ["@blotout/platform-medusa"],
   // ...the rest of your config
 }
 ```
@@ -132,7 +132,7 @@ const nextConfig = {
 Mount one component in `src/app/layout.tsx`:
 
 ```tsx
-import QintoAutoCapture from "@blotoutio/medusa-plugin-blotout/storefront/autocapture"
+import QintoAutoCapture from "@blotout/platform-medusa/storefront/autocapture"
 
 <body>
   <QintoAutoCapture />
@@ -143,7 +143,7 @@ import QintoAutoCapture from "@blotoutio/medusa-plugin-blotout/storefront/autoca
 And add one three-line file, `src/app/api/qinto/context/route.ts`:
 
 ```ts
-export { GET } from "@blotoutio/medusa-plugin-blotout/storefront/context-route"
+export { GET } from "@blotout/platform-medusa/storefront/context-route"
 ```
 
 That one file has to exist for real. Next finds route handlers by scanning your filesystem, so a
@@ -213,10 +213,12 @@ that actually succeeded.
 > effect can replace the global, so the patch silently never fires. `PerformanceObserver` has no
 > such ordering problem.
 
-The assumed shape is the Medusa Next.js starter: the `@lib/*` / `@modules/*` aliases are its, and
-route matching expects `/[countryCode]/products/[handle]` and
-`/[countryCode]/order/[id]/confirmed`. On a different storefront, keep the plugin and rewrite the
-component — the event payload builders in `lib/qinto/mapping.ts` are framework-free and still apply.
+Route matching defaults to the Medusa Next.js starter's shapes, so `/[countryCode]/products/[handle]`,
+`/[countryCode]/checkout` and `/[countryCode]/order/[id]/confirmed`. A storefront that moved them
+passes `routes` to the component, as a pattern per event or a function where a pattern will not
+reach. The rules live in `lib/qinto/routes.ts`, pure and unit-tested, and MERCHANT-SETUP.md has the
+reference. Only `ViewContent`, `InitiateCheckout` and `Purchase` read the path at all, the other six
+come from cart and customer state and never need configuring.
 
 Identity (email, name, city, country, postcode, address) attaches to the shopper's profile at
 checkout and on the order.
