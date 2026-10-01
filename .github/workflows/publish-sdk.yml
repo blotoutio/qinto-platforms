@@ -1,0 +1,50 @@
+name: Publish SDK
+
+# Manually triggered: the selected package is the folder it publishes from. Add a folder to the
+# options below when a new platform package lands.
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Package folder to publish
+        required: true
+        type: choice
+        options:
+          - medusa
+
+# id-token is the npm credential: trusted publishing exchanges this run's OIDC token for a
+# short-lived registry token, and attaches provenance on its own — there is no npm secret.
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-${{ inputs.package }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # The dispatch form lets any branch be picked; only main's code ships under our name.
+    if: github.ref == 'refs/heads/main'
+
+    defaults:
+      run:
+        working-directory: ${{ inputs.package }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # registry-url points npm at npmjs.org for the OIDC exchange.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ${{ inputs.package }}/package-lock.json
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing needs npm 11.5.1+; pin to the package's declared packageManager.
+      - name: Install npm from packageManager
+        run: npm install -g "$(node -p "require('./package.json').packageManager")"
+
+      # prepublishOnly runs the build here, so the tarball can never carry a stale build.
+      - run: npm publish --access public
