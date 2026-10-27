@@ -11,11 +11,20 @@ on:
         type: choice
         options:
           - medusa
+      bump:
+        description: Version bump
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
+# contents: write lets the run push the version commit and tag.
 # id-token is the npm credential: trusted publishing exchanges this run's OIDC token for a
 # short-lived registry token, and attaches provenance on its own — there is no npm secret.
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 concurrency:
@@ -45,6 +54,21 @@ jobs:
       # Trusted publishing needs npm 11.5.1+; pin to the package's declared packageManager.
       - name: Install npm from packageManager
         run: npm install -g "$(node -p "require('./package.json').packageManager")"
+
+      # The build in prepublishOnly needs the medusa CLI from devDependencies.
+      - run: npm ci
+
+      # Tags are prefixed with the folder because every package in this repo shares one tag list.
+      # The tag is pushed before publishing so every version on npm has a matching commit.
+      - name: Bump version and tag
+        run: |
+          version="$(npm version ${{ inputs.bump }} --no-git-tag-version)"
+          tag="${{ inputs.package }}-${version}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore(${{ inputs.package }}): release ${version}"
+          git tag "${tag}"
+          git push origin HEAD "${tag}"
 
       # prepublishOnly runs the build here, so the tarball can never carry a stale build.
       - run: npm publish --access public
