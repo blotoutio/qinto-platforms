@@ -238,8 +238,6 @@ holds no Qinto credential — there is no column for one.
   refreshed confirmation page counts the order twice.
 - **Field names are exact.** `item_price` not `price`; `variantId` not `variant_id`; `taxCost` and
   `shippingCost`. A wrong name is dropped silently rather than rejected.
-- **This is not the EdgeTag SDK.** `@blotoutio/edgetag-sdk-js` speaks a different protocol and its
-  `/init` call gets `403 path not allowed` from Qinto. Use the files in `storefront/`.
 
 ---
 

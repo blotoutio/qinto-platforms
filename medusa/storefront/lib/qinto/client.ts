@@ -5,10 +5,7 @@ import type { Properties, Traits } from "./mapping"
 /**
  * The only module that talks to the Qinto browser runtime.
  *
- * **Not `@blotoutio/edgetag-sdk-js`.** That package speaks EdgeTag's protocol — it calls
- * `GET /init` on the destination, which a Qinto site answers with `403 path not allowed`,
- * leaving `TypeError: Failed to fetch` on every page. Qinto's runtime is `q.js`, loaded by the
- * site's own snippet, which exposes `window.qinto`.
+ * Qinto's runtime is `q.js`, loaded by the site's own snippet, which exposes `window.qinto`.
  *
  * Two rules hold everywhere here:
  *

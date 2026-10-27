@@ -34,7 +34,6 @@
     "qinto",
     "blotout",
     "analytics",
-    "edgetag",
     "medusa-plugin-integration"
   ],
   "scripts": {
