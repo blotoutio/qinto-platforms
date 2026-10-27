@@ -13,21 +13,26 @@ import { HttpTypes } from "@medusajs/types"
  * wrapped in `guard`, which returns an empty payload instead. A missing analytics event is a
  * rounding error; a broken checkout is not.
  *
- * The field names are the platform's and are not guessable. Providers read `item_price` and ignore
- * `price`; `variantId` is what GA4 turns into `item_variant`; Purchase reads `taxCost` and
- * `shippingCost`, not `tax` and `shipping`. A wrong name is dropped in silence rather than
- * rejected, so these are checked against Qinto's published standard-event list rather than
- * guessed.
+ * The field names are the platform's and are not guessable. A content item's price is `value` —
+ * the price of *one* unit, not the line total — and neither `price` nor `item_price` is read;
+ * `variantId` is what GA4 turns into `item_variant`; Purchase reads `taxCost` and `shippingCost`,
+ * not `tax` and `shipping`. A wrong name is dropped in silence rather than rejected, so these are
+ * checked against Qinto's published standard-event list rather than guessed.
  *
  * Medusa 2.x amounts are already decimal (an order totalling €20.00 reports `total: 20`), so
  * nothing here divides by 100.
  */
 
-/** One cart, order or product line, in Blotout's `Content` shape. */
+/**
+ * One cart, order or product line, in Blotout's `Content` shape.
+ *
+ * `id`, `quantity` and `value` are required. `value` is the **unit** price: a line of two €5 tees
+ * is `{ quantity: 2, value: 5 }`, and the line total lives on the event's own `value`, not here.
+ */
 export type Content = {
   id: string
   quantity: number
-  item_price: number
+  value: number
   variantId?: string
   sku?: string
   title?: string
@@ -144,7 +149,7 @@ const toContentUnsafe = (
   return {
     id: item.product_id ?? item.variant_id ?? item.id,
     quantity: item.quantity ?? 1,
-    item_price: item.unit_price ?? 0,
+    value: item.unit_price ?? 0,
     ...compact({
       variantId: item.variant_id,
       sku: variant?.sku,
@@ -174,7 +179,7 @@ const viewContentUnsafe = (
       compact({
         id: product.id,
         quantity: 1,
-        item_price: price ?? 0,
+        value: price ?? 0,
         variantId: variant?.id,
         sku: variant?.sku,
         title: product.title,
@@ -189,8 +194,9 @@ const viewContentUnsafe = (
 /**
  * A single line being added to or removed from the cart.
  *
- * `currency` and `value` are both **required** on AddToCart and RemoveFromCart. `value` is this
- * line's contribution, not the cart total — the event is about the line.
+ * `currency` and `value` are both **required** on AddToCart and RemoveFromCart. The event's `value`
+ * is this line's contribution, not the cart total — the event is about the line. The content
+ * item's own `value` stays the unit price, so the two differ whenever `quantity` is above one.
  */
 const cartLineChangeUnsafe = (
   product: HttpTypes.StoreProduct,
@@ -207,7 +213,7 @@ const cartLineChangeUnsafe = (
       compact({
         id: product.id,
         quantity,
-        item_price: unit,
+        value: unit,
         variantId: variant?.id,
         sku: variant?.sku,
         title: product.title,
@@ -256,23 +262,32 @@ const orderIdOfUnsafe = (order: {
 }): string => (order.id != null && order.id !== "" ? String(order.id) : String(order.display_id ?? ""))
 
 /**
- * Identity traits, keyed by the SDK's `UserKey` union.
+ * Identity traits, keyed by Qinto's standard trait names, written exactly as the docs list them.
  *
- * The SDK accepts only these nine keys. `compact` is generic over its input and drops nulls from the
- * type as well as the value, so each builder below type-checks against `Traits` on its own without
- * a cast — an earlier version returned `Record<string, unknown>`, which is assignable to anything
- * and quietly enforced nothing. The address is the shipping address, the one a shopper filled in.
+ * The eight standard keys are `email`, `phone`, `first_name`, `last_name`, `country`, `state`,
+ * `city` and `postal_code`. The server folds camelCase into snake_case, but it does not translate
+ * synonyms: an earlier version sent `zip`, which is not a standard key and so landed as a custom
+ * trait instead of the standard postcode. Spelling them literally removes the guesswork.
+ *
+ * `address` is the one **custom** trait here, deliberately: there is no standard street-address
+ * key, so it arrives as a custom trait rather than one of the eight standard ones.
+ *
+ * `compact` is generic over its input and drops nulls from the type as well as the value, so each
+ * builder below type-checks against `Traits` on its own without a cast — an earlier version returned
+ * `Record<string, unknown>`, which is assignable to anything and quietly enforced nothing. The
+ * address is the shipping address, the one a shopper filled in.
  */
 export type Traits = Partial<
   Record<
     | "email"
     | "phone"
-    | "firstName"
-    | "lastName"
+    | "first_name"
+    | "last_name"
     | "country"
     | "state"
     | "city"
-    | "zip"
+    | "postal_code"
+    // Custom, not a standard key — see above.
     | "address",
     string
   >
@@ -286,13 +301,13 @@ const traitsFromAddress = (
     | undefined
 ): Traits =>
   compact({
-    firstName: address?.first_name,
-    lastName: address?.last_name,
+    first_name: address?.first_name,
+    last_name: address?.last_name,
     phone: address?.phone,
     city: address?.city,
     state: address?.province,
     country: address?.country_code,
-    zip: address?.postal_code,
+    postal_code: address?.postal_code,
     address: address?.address_1,
   })
 
@@ -311,8 +326,8 @@ const orderTraitsUnsafe = (order: HttpTypes.StoreOrder): Traits =>
 const customerTraitsUnsafe = (customer: HttpTypes.StoreCustomer): Traits =>
   compact({
     email: customer.email,
-    firstName: customer.first_name,
-    lastName: customer.last_name,
+    first_name: customer.first_name,
+    last_name: customer.last_name,
     phone: customer.phone,
   })
 
@@ -323,7 +338,7 @@ const customerTraitsUnsafe = (customer: HttpTypes.StoreCustomer): Traits =>
  * an inner call would hide a failure behind a plausible-looking empty value, which is worse than
  * one guard at the boundary.
  */
-export const toContent = guard("toContent", toContentUnsafe, { id: "", quantity: 1, item_price: 0 } as ReturnType<typeof toContentUnsafe>)
+export const toContent = guard("toContent", toContentUnsafe, { id: "", quantity: 1, value: 0 } as ReturnType<typeof toContentUnsafe>)
 export const toContents = guard("toContents", toContentsUnsafe, [] as ReturnType<typeof toContentsUnsafe>)
 export const viewContent = guard("viewContent", viewContentUnsafe, {} as ReturnType<typeof viewContentUnsafe>)
 export const cartLineChange = guard("cartLineChange", cartLineChangeUnsafe, {} as ReturnType<typeof cartLineChangeUnsafe>)
@@ -335,7 +350,24 @@ export const orderTraits = guard("orderTraits", orderTraitsUnsafe, {} as ReturnT
 /**
  * Traits for a signed-in customer.
  *
- * Not reached by automatic capture, which derives identity from the cart and the order. Exported
- * because a storefront that surfaces a logged-in customer elsewhere needs the same shape.
+ * Automatic capture sends these once per session when Medusa resolves a signed-in customer from the
+ * session cookie. Exported because a storefront that surfaces a logged-in customer elsewhere needs
+ * the same shape.
  */
 export const customerTraits = guard("customerTraits", customerTraitsUnsafe, {} as ReturnType<typeof customerTraitsUnsafe>)
+
+/**
+ * The identifiers a signed-in customer is aliased with, **email first**.
+ *
+ * The order is what keeps one shopper one person. Qinto never merges persons: an alias nobody owns
+ * creates a new person (or joins the one this browser is already linked to), and an alias owned by
+ * a different person than the browser's is a conflict, not a link. A guest checkout aliases only the
+ * email. If a later sign-in on another device sent the customer id first, that unseen id would mint a
+ * second person and the email would then conflict with the guest's. Sending the email first joins
+ * the guest's person, and the customer id attaches to it. It is also the graph's own precedence for
+ * identifiers that arrive together: email, then phone, then custom ids.
+ */
+const customerAliasesUnsafe = (customer: HttpTypes.StoreCustomer): string[] =>
+  [customer.email, customer.id].filter(isNonEmpty)
+
+export const customerAliases = guard("customerAliases", customerAliasesUnsafe, [] as string[])

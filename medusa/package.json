@@ -42,7 +42,7 @@
     "lint": "medusa lint",
     "prepublishOnly": "medusa plugin:build",
     "typecheck": "tsc -p tsconfig.check.json",
-    "test": "tsc storefront/lib/qinto/cart-diff.ts storefront/lib/qinto/truid.ts storefront/lib/qinto/form-traits.ts storefront/lib/qinto/routes.ts --outDir .test-build --module es2022 --target es2022 --moduleResolution bundler --skipLibCheck && node test/prepare.mjs && node --test test/*.test.mjs"
+    "test": "tsc storefront/lib/qinto/cart-diff.ts storefront/lib/qinto/truid.ts storefront/lib/qinto/form-traits.ts storefront/lib/qinto/routes.ts storefront/lib/qinto/context.ts storefront/lib/qinto/client.ts --outDir .test-build --module es2022 --target es2022 --moduleResolution bundler --skipLibCheck && node test/prepare.mjs && node --test test/*.test.mjs"
   },
   "devDependencies": {
     "@medusajs/admin-sdk": "2.21.0",

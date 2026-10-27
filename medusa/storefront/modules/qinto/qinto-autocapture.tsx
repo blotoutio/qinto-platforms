@@ -7,6 +7,7 @@ import {
   cartEvent,
   cartTraits,
   compact,
+  customerAliases,
   customerTraits,
   orderIdOf,
   orderTraits,
@@ -237,7 +238,9 @@ const Capture = ({ routes }: { routes?: RouteConfig }) => {
         const order = body?.order ?? null
         if (order !== null) {
           once(`Purchase:${orderIdOf(order)}`, () => {
-            identify(orderTraits(order))
+            // A placed order is a verified identity, so its email is aliased as well as sent as a
+            // trait — one of the three moments (login, sign-up, order) an alias is safe to send.
+            identify(orderTraits(order), { alias: [order.email] })
             track("Purchase", purchase(order))
           })
         }
@@ -270,6 +273,12 @@ const Capture = ({ routes }: { routes?: RouteConfig }) => {
    * submitted, and it reads the customer Medusa itself resolved from the session rather than
    * whatever was typed into a field. The form listener below covers the other half — the moment of
    * signing up or signing in, before any of this is true yet.
+   *
+   * Because Medusa has verified the session, this is where the browser is linked to the person:
+   * the email and then the customer id are aliased, after the identify has landed — email first, so a
+   * shopper who checked out as a guest joins that person rather than splitting off a new one (see
+   * `customerAliases`). The form
+   * listener sends traits only, never an alias.
    */
   useEffect(() => {
     void (async () => {
@@ -281,7 +290,9 @@ const Capture = ({ routes }: { routes?: RouteConfig }) => {
 
       const traits = customerTraits(customer)
       if (Object.keys(traits).length > 0) {
-        once(`identify:${customer.id}`, () => identify(traits, customer.id))
+        once(`identify:${customer.id}`, () =>
+          identify(traits, { alias: customerAliases(customer) })
+        )
       }
     })()
   }, [pathname])
@@ -292,10 +303,10 @@ const Capture = ({ routes }: { routes?: RouteConfig }) => {
    * One capture-phase listener on `document`, so it sees submissions from components this plugin
    * never touches. That is what keeps login and registration working with no storefront edit.
    *
-   * **Only these four field names are ever read.** The form is not enumerated and no other input is
-   * inspected, so a password, a card number or a token in the same form cannot be picked up by
-   * accident — adding a field to this list is the only way to widen what is collected, which is
-   * deliberate. `FormData` is read from a clone-free snapshot at submit time; nothing is stored.
+   * **Only the field names in `IDENTITY_FIELDS` (`lib/qinto/form-traits`) are ever read.** The form
+   * is not enumerated and no other input is inspected, so a password, a card number or a token in the
+   * same form cannot be picked up by accident — adding a field to that table is the only way to widen
+   * what is collected, which is deliberate. `FormData` is read from a clone-free snapshot at submit time; nothing is stored.
    */
   useEffect(() => {
     const onSubmit = (event: Event) => {
@@ -316,13 +327,16 @@ const Capture = ({ routes }: { routes?: RouteConfig }) => {
           return
         }
 
+        // Traits only, deliberately no alias: this runs before the submit has succeeded, so the
+        // email may be mistyped, rejected or someone else's, and an alias cannot be taken back.
+        // The verified identity is aliased once Medusa resolves the customer or the order.
         identify(traits)
 
         // A form that asks for a name *and* a password is a sign-up; one that asks for a password
         // alone is a sign-in, and a profile form has no password at all. Keyed on the email so a
         // failed first attempt and its retry count once.
         const hasPassword = form.querySelector('input[type="password"]') !== null
-        const hasName = traits.firstName !== undefined || traits.lastName !== undefined
+        const hasName = traits.first_name !== undefined || traits.last_name !== undefined
 
         if (hasPassword && hasName) {
           once(`CompleteRegistration:${traits.email ?? "anonymous"}`, () =>

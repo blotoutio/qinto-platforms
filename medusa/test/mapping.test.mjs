@@ -67,9 +67,73 @@ test("purchase maps a realistic order correctly", () => {
   assert.equal(out.value, 20)
   assert.equal(out.shippingCost, 10)
   assert.equal(out.contents[0].id, "prod_1")
-  assert.equal(out.contents[0].item_price, 5, "item_price is per unit, not line total")
+  assert.equal(out.contents[0].value, 5, "value is per unit, not line total")
+  assert.equal("item_price" in out.contents[0], false)
   assert.equal(out.contents[0].quantity, 2)
   assert.equal(out.contents[0].sku, "TEE-M")
+})
+
+test("every content item carries a per-unit value and no item_price", () => {
+  const product = {
+    id: "prod_1",
+    title: "Tee",
+    handle: "tee",
+    categories: [],
+  }
+  const variant = { id: "var_1", sku: "TEE-M", calculated_price: { calculated_amount: 5 } }
+
+  const view = m.viewContent(product, variant, "eur")
+  assert.equal(view.contents[0].value, 5)
+  assert.equal("item_price" in view.contents[0], false)
+
+  const add = m.cartLineChange(product, variant, 3, "eur")
+  assert.equal(add.value, 15, "the event's value is the line's contribution")
+  assert.equal(add.contents[0].value, 5, "the item's value stays the unit price")
+  assert.equal(add.contents[0].quantity, 3)
+  assert.equal("item_price" in add.contents[0], false)
+
+  const cart = m.cartEvent({
+    currency_code: "eur",
+    total: 10,
+    items: [{ product_id: "prod_1", quantity: 2, unit_price: 5 }],
+  })
+  assert.equal(cart.contents[0].value, 5)
+  assert.equal("item_price" in cart.contents[0], false)
+
+  assert.deepEqual(m.toContent(null), { id: "", quantity: 1, value: 0 }, "the guard fallback too")
+})
+
+test("traits use the standard keys: first_name, last_name, postal_code", () => {
+  const traits = m.orderTraits({
+    email: "ada@localhost.test",
+    shipping_address: {
+      first_name: "Ada",
+      last_name: "Lovelace",
+      phone: "+4533445566",
+      address_1: "12 Analytical Way",
+      city: "Aarhus",
+      province: "Midtjylland",
+      postal_code: "2200",
+      country_code: "dk",
+    },
+  })
+
+  assert.deepEqual(traits, {
+    email: "ada@localhost.test",
+    first_name: "Ada",
+    last_name: "Lovelace",
+    phone: "+4533445566",
+    address: "12 Analytical Way",
+    city: "Aarhus",
+    state: "Midtjylland",
+    postal_code: "2200",
+    country: "dk",
+  })
+
+  assert.deepEqual(
+    m.customerTraits({ email: "ada@localhost.test", first_name: "Ada", last_name: "Lovelace" }),
+    { email: "ada@localhost.test", first_name: "Ada", last_name: "Lovelace" }
+  )
 })
 
 test("orderIdOf uses the order's own id, not its display number", () => {

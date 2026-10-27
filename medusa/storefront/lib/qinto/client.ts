@@ -35,7 +35,11 @@ type QintoRuntime = {
     properties?: Properties,
     options?: { eventId?: string }
   ) => Promise<{ eventId: string }>
-  identify: (traits: Record<string, unknown>, id?: string) => Promise<unknown>
+  // The runtime also accepts `identify(traits, id)` as shorthand for identify-then-alias. It is
+  // deliberately not used: this module sequences the alias itself, so it can wait for the identify
+  // to land and skip the link when it did not. See `sendIdentify`.
+  identify: (traits: Record<string, unknown>) => Promise<unknown>
+  alias: (id: string) => Promise<unknown>
   getAnonId: () => Promise<string | null>
 }
 
@@ -56,10 +60,15 @@ const runtime = (): QintoRuntime | null => {
  * dropped on exactly the page load that matters most.
  *
  * The snippet's own Proxy queues calls made after it runs; this covers the window *before* that.
+ *
+ * An identify carries its aliases with it rather than queueing them as separate entries. They
+ * must run *after* the identify has resolved, and two independent entries would only guarantee the
+ * order the calls were made in, not that the first had finished — nor would they survive the oldest
+ * entry being dropped at `MAX_PENDING` without leaving an orphaned alias behind.
  */
 type Pending =
   | { kind: "track"; name: string; properties?: Properties }
-  | { kind: "identify"; traits: Traits; id?: string }
+  | { kind: "identify"; traits: Traits; aliases: string[] }
 
 const pending: Pending[] = []
 
@@ -85,7 +94,7 @@ const flush = (): void => {
     if (item.kind === "track") {
       send(q, item.name, item.properties)
     } else {
-      sendIdentify(q, item.traits, item.id)
+      sendIdentify(q, item.traits, item.aliases)
     }
   }
 }
@@ -140,11 +149,40 @@ const send = (q: QintoRuntime, name: string, properties?: Properties): void => {
   }
 }
 
-const sendIdentify = (q: QintoRuntime, traits: Traits, id?: string): void => {
+/**
+ * Identifies, then links each alias — in that order, and only once the identify has landed.
+ *
+ * **Why wait.** An alias that reaches Qinto before the traits it belongs with can arrive as a
+ * conflict against the profile the identify is about to create, so each step awaits the previous
+ * one. The aliases are chained one after another for the same reason.
+ *
+ * **Why skip on failure.** When the identify rejects, its aliases are dropped rather than sent
+ * anyway. An alias is a permanent link between this browser and a person, so sending it without
+ * knowing the traits arrived trades a missed link (recoverable on the next verified login or order)
+ * for a possibly wrong or conflicting one (not recoverable). A rejected *alias* does not stop the
+ * ones after it: each is an independent link, already vouched for by the same verified identity.
+ */
+const sendIdentify = (q: QintoRuntime, traits: Traits, aliases: string[]): void => {
   try {
-    q.identify(traits, id).catch((error) => report("identify", error))
+    q.identify(traits).then(
+      () =>
+        aliases.reduce<Promise<void>>(
+          (previous, id) => previous.then(() => sendAlias(q, id)),
+          Promise.resolve()
+        ),
+      (error) => report("identify", error)
+    )
   } catch (error) {
     report("identify threw", error)
+  }
+}
+
+/** One alias, never rejecting — failures are reported here so the chain above keeps going. */
+const sendAlias = async (q: QintoRuntime, id: string): Promise<void> => {
+  try {
+    await q.alias(id)
+  } catch (error) {
+    report("alias", error)
   }
 }
 
@@ -160,8 +198,8 @@ const report = (what: string, error: unknown): void => {
  * Sends a standard event.
  *
  * `eventId` is left to the runtime on purpose: `q.js` derives it from `properties.orderId` when
- * that is a non-empty string, so a Purchase deduplicates against the copy the backend sends
- * without this passing anything.
+ * that is a non-empty string, so a reloaded confirmation page or any duplicate send of the same
+ * Purchase carries the same event id and is deduplicated, without this passing anything.
  */
 export const track = (name: string, properties?: Properties): void => {
   const q = runtime()
@@ -174,20 +212,41 @@ export const track = (name: string, properties?: Properties): void => {
   send(q, name, properties)
 }
 
-/** Attaches identity traits. Skipped when there is nothing to say. */
-export const identify = (traits: Traits, id?: string): void => {
+/**
+ * Attaches identity traits, and optionally links this browser to a person. Skipped when there are
+ * no traits — aliases included, since every caller's alias is also one of its traits.
+ *
+ * Traits alone are cheap and safe to send from anything, including a form field the shopper has
+ * not submitted successfully yet. **`alias` is not.** It links the browser to a person profile
+ * permanently, so pass it only for an identity something has verified: a customer Medusa resolved
+ * from the session, or the email on a placed order. Never for a value read from a form, because the
+ * submit may fail and the address may be mistyped or someone else's.
+ *
+ * Aliases are sent in the order given, each after the identify (and the alias before it) resolves —
+ * see `sendIdentify`. Blank and repeated values are dropped.
+ */
+export const identify = (traits: Traits, options: { alias?: (string | null | undefined)[] } = {}): void => {
   if (Object.keys(traits).length === 0) {
     return
   }
 
+  const aliases = Array.from(
+    new Set(
+      (options.alias ?? [])
+        .filter((id): id is string => typeof id === "string")
+        .map((id) => id.trim())
+        .filter((id) => id !== "")
+    )
+  )
+
   const q = runtime()
   if (q === null) {
-    enqueue({ kind: "identify", traits, id })
+    enqueue({ kind: "identify", traits, aliases })
 
     return
   }
 
-  sendIdentify(q, traits, id)
+  sendIdentify(q, traits, aliases)
 }
 
 /**

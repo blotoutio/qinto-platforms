@@ -7,6 +7,18 @@ import {
   isSecureRequest,
   newTruid,
 } from "../../../../lib/qinto/truid"
+import {
+  CART_FIELDS,
+  CUSTOMER_FIELDS,
+  ORDER_FIELDS,
+  isCartId,
+  isOrderId,
+  productFields,
+  projectCart,
+  projectCustomer,
+  projectOrder,
+  projectProduct,
+} from "../../../../lib/qinto/context"
 
 /**
  * The bridge that makes zero-wiring capture possible.
@@ -20,7 +32,8 @@ import {
  * and hands the browser back the objects it needs to derive every event by itself. Adding a file
  * is not the same as editing eleven: nothing here changes a line of a merchant's existing code.
  *
- * It is deliberately read-only and returns nothing a shopper could not already see on the page.
+ * It is deliberately read-only and returns nothing a shopper could not already see on the page —
+ * and of that, only the fields tracking reads. See `lib/qinto/context` for both halves of that.
  */
 
 const BACKEND =
@@ -95,16 +108,15 @@ const regionIdFor = async (countryCode?: string | null): Promise<string | null> 
  * the first page load, so it is where the cookie is minted. An existing value is never replaced —
  * re-issuing would reset the visitor on every request and defeat the entire point.
  *
- * Returning the value alongside the payload costs nothing: this response already carries the cart
- * and the signed-in customer, so an anonymous id is not a new exposure, and it lets the browser
- * attach the id on a store whose collector is not yet first-party.
+ * The value travels only in the cookie, never in a response body. Qinto reads it from the cookie, and
+ * nothing in the browser needs it, so echoing it would only hand an `httpOnly` value to any script on
+ * the page.
  */
-const issueTruid = async (): Promise<string> => {
+const issueTruid = async (): Promise<void> => {
   const jar = await cookies()
-  const existing = jar.get(TRUID_COOKIE)?.value
 
-  if (existing) {
-    return existing
+  if (jar.get(TRUID_COOKIE)?.value) {
+    return
   }
 
   const head = await requestHeaders()
@@ -131,8 +143,6 @@ const issueTruid = async (): Promise<string> => {
     // Setting a cookie can throw if the response has already been committed. An un-set cookie costs
     // this visitor their id; a thrown route costs them the page.
   }
-
-  return truid
 }
 
 export const dynamic = "force-dynamic"
@@ -146,27 +156,27 @@ export const GET = async (request: Request) => {
     const kind = url.searchParams.get("kind")
     const jar = await cookies()
     const token = jar.get("_medusa_jwt")?.value
-    const truid = await issueTruid()
+    await issueTruid()
 
     if (kind === "cart") {
       const cartId = jar.get("_medusa_cart_id")?.value
-      if (!cartId) {
+      if (!isCartId(cartId)) {
         // Not an error: a first-time visitor has no cart. One shape for the client to handle.
-        return NextResponse.json({ truid, cart: null }, { headers: noStore })
+        return NextResponse.json({ cart: null }, { headers: noStore })
       }
 
       const body = await get<{ cart: unknown }>(
-        `/store/carts/${cartId}?fields=*items,*items.variant,*shipping_methods,*payment_collection,*payment_collection.payment_sessions`,
+        `/store/carts/${encodeURIComponent(cartId)}?fields=${encodeURIComponent(CART_FIELDS)}`,
         token
       )
 
-      return NextResponse.json({ truid, cart: body?.cart ?? null }, { headers: noStore })
+      return NextResponse.json({ cart: projectCart(body?.cart) }, { headers: noStore })
     }
 
     if (kind === "product") {
       const handle = url.searchParams.get("handle")
       if (!handle) {
-        return NextResponse.json({ truid, product: null }, { headers: noStore })
+        return NextResponse.json({ product: null }, { headers: noStore })
       }
 
       const regionId = await regionIdFor(url.searchParams.get("country"))
@@ -175,39 +185,45 @@ export const GET = async (request: Request) => {
       // request with `Missing required pricing context` otherwise, losing the product too. So
       // the field is requested only when a region resolved, and a priceless ViewContent is
       // preferred over none.
-      const query = new URLSearchParams({
-        handle,
-        fields: regionId ? "*variants.calculated_price,*categories" : "*categories",
-      })
+      const query = new URLSearchParams({ handle, fields: productFields(regionId !== null) })
       if (regionId) {
         query.set("region_id", regionId)
       }
 
       const body = await get<{ products?: unknown[] }>(`/store/products?${query.toString()}`, token)
 
-      return NextResponse.json({ truid, product: body?.products?.[0] ?? null }, { headers: noStore })
+      return NextResponse.json(
+        { product: projectProduct(body?.products?.[0]) },
+        { headers: noStore }
+      )
     }
 
     if (kind === "customer") {
       // No token means a guest, which is the normal case and not an error. One shape to handle.
       if (!token) {
-        return NextResponse.json({ truid, customer: null }, { headers: noStore })
+        return NextResponse.json({ customer: null }, { headers: noStore })
       }
 
-      const body = await get<{ customer: unknown }>("/store/customers/me", token)
+      const body = await get<{ customer: unknown }>(
+        `/store/customers/me?fields=${encodeURIComponent(CUSTOMER_FIELDS)}`,
+        token
+      )
 
-      return NextResponse.json({ truid, customer: body?.customer ?? null }, { headers: noStore })
+      return NextResponse.json({ customer: projectCustomer(body?.customer) }, { headers: noStore })
     }
 
     if (kind === "order") {
       const id = url.searchParams.get("id")
-      if (!id) {
-        return NextResponse.json({ truid, order: null }, { headers: noStore })
+      if (!isOrderId(id)) {
+        return NextResponse.json({ order: null }, { headers: noStore })
       }
 
-      const body = await get<{ order: unknown }>(`/store/orders/${id}?fields=*items`, token)
+      const body = await get<{ order: unknown }>(
+        `/store/orders/${encodeURIComponent(id)}?fields=${encodeURIComponent(ORDER_FIELDS)}`,
+        token
+      )
 
-      return NextResponse.json({ truid, order: body?.order ?? null }, { headers: noStore })
+      return NextResponse.json({ order: projectOrder(body?.order) }, { headers: noStore })
     }
 
     return NextResponse.json({ error: "unknown kind" }, { status: 400, headers: noStore })

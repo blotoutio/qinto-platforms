@@ -22,13 +22,14 @@ import { compact, type Traits } from "./mapping"
  */
 export const IDENTITY_FIELDS: Record<keyof Traits, readonly string[]> = {
   email: ["email", "shipping_address.email", "billing_address.email"],
-  firstName: ["first_name", "shipping_address.first_name", "billing_address.first_name"],
-  lastName: ["last_name", "shipping_address.last_name", "billing_address.last_name"],
+  first_name: ["first_name", "shipping_address.first_name", "billing_address.first_name"],
+  last_name: ["last_name", "shipping_address.last_name", "billing_address.last_name"],
   phone: ["phone", "shipping_address.phone", "billing_address.phone"],
+  // A custom trait, not a standard key — see `Traits` in ./mapping.
   address: ["shipping_address.address_1", "billing_address.address_1", "address_1"],
   city: ["shipping_address.city", "billing_address.city", "city"],
   state: ["shipping_address.province", "billing_address.province", "province"],
-  zip: ["shipping_address.postal_code", "billing_address.postal_code", "postal_code"],
+  postal_code: ["shipping_address.postal_code", "billing_address.postal_code", "postal_code"],
   country: ["shipping_address.country_code", "billing_address.country_code", "country_code"],
 }
 

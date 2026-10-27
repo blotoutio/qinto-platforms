@@ -172,7 +172,9 @@ Three signals, none of which needs a call site:
 - **A `submit` listener on `document`** picks up identity from any form a shopper sends —
   register, login, and each of the profile forms — without those components being touched. A
   signed-in shopper is also identified from the session on page load, which covers a returning
-  visit where no form is ever submitted.
+  visit where no form is ever submitted. Only verified identities are *aliased* (linked to a
+  person profile): the signed-in customer's id and email, and the email on a placed order. A form
+  submission sends traits only, because the submit may still fail and an alias is permanent.
 
 ### The visitor cookie
 
@@ -236,8 +238,11 @@ holds no Qinto credential — there is no column for one.
   than hooking their call sites.
 - **`q.js` derives a Purchase's event id from `properties.orderId`.** Do not override it, or a
   refreshed confirmation page counts the order twice.
-- **Field names are exact.** `item_price` not `price`; `variantId` not `variant_id`; `taxCost` and
-  `shippingCost`. A wrong name is dropped silently rather than rejected.
+- **Field names are exact.** A content item's price is `value`, per unit, not `price` or
+  `item_price`; traits are `first_name`, `last_name` and `postal_code`, not `firstName` or `zip`
+  (`address` is sent as a custom trait); `variantId` not `variant_id`; `taxCost` and
+  `shippingCost`. A wrong name is never rejected: an event field is silently dropped, and a trait
+  silently becomes a custom one.
 
 ---
 

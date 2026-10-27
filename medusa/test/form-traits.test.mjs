@@ -23,13 +23,13 @@ test("the checkout address step yields every trait, not just the email", () => {
 
   assert.deepEqual(traits, {
     email: "ada@localhost.test",
-    firstName: "Ada",
-    lastName: "Lovelace",
+    first_name: "Ada",
+    last_name: "Lovelace",
     phone: "+4533445566",
     address: "12 Analytical Way",
     city: "Aarhus",
     state: "Midtjylland",
-    zip: "2200",
+    postal_code: "2200",
     country: "dk",
   })
 })
@@ -46,8 +46,8 @@ test("the register form still works through the bare names", () => {
 
   assert.deepEqual(traits, {
     email: "ada@localhost.test",
-    firstName: "Ada",
-    lastName: "Lovelace",
+    first_name: "Ada",
+    last_name: "Lovelace",
     phone: "+4533445566",
   })
 })
@@ -97,4 +97,24 @@ test("blank and whitespace-only values are dropped, and values are trimmed", () 
   )
 
   assert.deepEqual(traits, { email: "ada@localhost.test" })
+})
+
+test("trait keys are Qinto's standard names, spelled literally", () => {
+  // `zip`, `firstName` and `lastName` are not standard keys: `zip` would land as a custom trait
+  // rather than the postcode. `address` is the one intentional custom trait.
+  assert.deepEqual(Object.keys(IDENTITY_FIELDS).sort(), [
+    "address",
+    "city",
+    "country",
+    "email",
+    "first_name",
+    "last_name",
+    "phone",
+    "postal_code",
+    "state",
+  ])
+  assert.equal(
+    traitsFrom(reader({ "shipping_address.postal_code": "2200" })).postal_code,
+    "2200"
+  )
 })
