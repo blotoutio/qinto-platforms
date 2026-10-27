@@ -46,10 +46,6 @@ Add it to `medusa-config.ts`:
 ```ts
 module.exports = defineConfig({
   // …
-  admin: {
-    // Required. Without it the Blotout admin page will not render — see the note below.
-    vite: () => ({ resolve: { dedupe: ["react", "react-dom"] } }),
-  },
   plugins: ["@blotout/platform-medusa"],
 })
 ```
@@ -62,14 +58,6 @@ set in **Admin → Blotout** and stored in your database.
 > source of any site running Qinto. You copy it from the Qinto portal and paste it in the admin.
 > The plugin's schema has two meaningful columns, `qinto_url` and `enabled`, and no column for a
 > token because nothing here ever holds one.
-
-> **Why the `admin.vite` line is not optional.** Any plugin that ships admin UI imports `react`.
-> Medusa's admin bundler pre-bundles React but does not deduplicate it, so with pnpm — or any
-> install that does not hoist — that import can resolve to a *second* copy of React inside the
-> plugin. Hooks then get a null dispatcher and the page dies with
-> `Cannot read properties of null (reading 'useState')`, which looks like a bug in the plugin and
-> is not. One line of `dedupe` fixes it. If you already set `admin.vite`, merge the `dedupe` into
-> what you have rather than replacing it.
 
 Run the migration and start:
 

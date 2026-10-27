@@ -4,7 +4,7 @@ This gets a MedusaJS store sending events to Qinto.
 
 ## What you need
 
-MedusaJS 2.21.0 or newer, Node 20.19+ or 22.12+, and a Next.js 14 or 15 storefront on the App Router.
+MedusaJS 2.21.1 or newer, Node 20.19+ or 22.12+, and a Next.js 14 or 15 storefront on the App Router.
 `COOKIE_SECRET` has to be set on the backend and every Medusa install already has one.
 
 Three of the nine events are recognised from the URL, and they default to the Medusa starter's
@@ -22,18 +22,9 @@ Register it in `medusa-config.ts`.
 ```ts
 module.exports = defineConfig({
   // ...your existing config
-  admin: {
-    vite: () => ({ resolve: { dedupe: ["react", "react-dom"] } }),
-  },
   plugins: ["@blotout/platform-medusa"],
 })
 ```
-
-Don't skip the `admin.vite` block. Any plugin with admin UI imports react, and Medusa's admin bundler
-pre-bundles react without deduping it, so with pnpm or any install that doesn't hoist you can end up
-with a second copy of react inside the plugin. Hooks then get a null dispatcher and the admin page
-dies with `Cannot read properties of null (reading 'useState')`. It looks like a broken plugin but it
-isn't.
 
 ```bash
 npx medusa db:migrate
@@ -140,9 +131,8 @@ otherwise the cookie gets issued and ignored.
 
 ## If something doesn't work
 
-**Admin page is blank, or the console says `Cannot read properties of null (reading 'useState')`.**
-The `admin.vite` dedupe block is missing. Add it and restart. If it still fails, delete
-`node_modules/.vite` and hard refresh, because Vite caches hard and a stale cache survives a restart.
+**Admin page is blank after installing or upgrading the plugin.** Delete `node_modules/.vite` and
+hard refresh, because Vite caches hard and a stale cache survives a restart.
 
 **Nothing in the real-time logger.** Check you pressed Start. Check the admin badge says "Sending
 events" and that Tracking is on. In the browser console check `window.qinto` exists, and if it's
