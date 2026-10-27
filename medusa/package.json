@@ -1,6 +1,6 @@
 {
   "name": "@blotout/platform-medusa",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Blotout's Medusa plugin: send storefront and order events to Qinto — first-party analytics and identity, with an admin connect flow.",
   "author": "Blotout",
   "license": "MIT",
