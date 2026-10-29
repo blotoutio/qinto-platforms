@@ -1,0 +1,12 @@
+name = "Blotout"
+type = "shopline-pixels-extension"
+
+[settings.fields.destination]
+name = "Qinto delivery host"
+description = "The Qinto host this store's events are sent to. Written by the Blotout app; do not edit."
+type = "single_line_text_field"
+
+[settings.fields.enabled]
+name = "Enabled"
+description = "Whether tracking is active for this store. Written by the Blotout app's tracking switch."
+type = "single_line_text_field"

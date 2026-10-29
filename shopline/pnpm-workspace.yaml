@@ -1,0 +1,46 @@
+packages:
+  - "app"
+  - "web"
+  - "extensions/*"
+
+# `shopline app dev` resolves the CLI's own transitive deps from the root, and Vite plugins expect
+# a flat tree; a strict store breaks both.
+shamefullyHoist: true
+
+allowBuilds:
+  # Both ship prebuilt native binaries a postinstall script has to place.
+  esbuild: true
+  workerd: true
+  "@shoplinedev/plugin-cloudflare": true
+  # Pulled in by @shoplineos/cli. None of their postinstall scripts are needed to run `sl`.
+  "@sentry/cli": false
+  ejs: false
+  javascript-obfuscator: false
+
+catalog:
+  "@biomejs/biome": 2.5.12
+  typescript: 5.9.3
+  "@types/node": 25.9.5
+  wrangler: 4.130.0
+  hono: 4.13.7
+  drizzle-orm: 0.45.2
+  drizzle-kit: 0.31.10
+  vitest: 4.1.11
+  "@vitest/coverage-v8": 4.1.11
+  "@vitest/coverage-istanbul": 4.1.11
+  "@cloudflare/vitest-pool-workers": 0.22.0
+  esbuild: 0.28.2
+  react: 18.3.1
+  react-dom: 18.3.1
+  "@types/react": 18.3.28
+  "@types/react-dom": 18.3.7
+
+minimumReleaseAgeExclude:
+  - '@cloudflare/workerd-darwin-64@1.20260908.1'
+  - '@cloudflare/workerd-darwin-arm64@1.20260908.1'
+  - '@cloudflare/workerd-linux-64@1.20260908.1'
+  - '@cloudflare/workerd-linux-arm64@1.20260908.1'
+  - '@cloudflare/workerd-windows-64@1.20260908.1'
+  - miniflare@5.20260908.0-alpha
+  - workerd@1.20260908.1
+  - wrangler@4.130.0

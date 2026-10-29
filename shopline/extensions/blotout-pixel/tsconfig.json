@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // WebWorker, not DOM: the strict sandbox has no `document` and no `window`, and this is what
+    // makes reaching for one a compile error rather than a runtime one. The extension package's own
+    // .d.ts references a few DOM types; `skipLibCheck` covers that.
+    "lib": ["ES2023", "WebWorker"],
+    "types": ["vitest/globals"]
+  },
+  "include": ["src", "test", "vitest.config.ts"]
+}

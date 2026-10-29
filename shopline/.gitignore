@@ -1,0 +1,13 @@
+node_modules
+dist/
+.env
+.env.*
+!.env.*.example
+.dev.vars
+shopline.app.dev.toml
+.DS_Store
+logs
+*.log
+.wrangler/
+coverage/
+extensions/*/build/

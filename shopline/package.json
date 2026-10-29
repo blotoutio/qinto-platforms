@@ -1,0 +1,28 @@
+{
+  "name": "blotout",
+  "version": "1.0.0",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "shopline": "shopline",
+    "build": "shopline app build",
+    "dev": "shopline app dev -c dev",
+    "dev:reset": "shopline app dev -c dev --reset",
+    "config:use": "shopline app config use -c dev",
+    "config:push": "shopline app config push -c dev",
+    "format": "biome check --write .",
+    "lint": "biome check .",
+    "typecheck": "pnpm -r --no-bail typecheck",
+    "db:check": "pnpm --filter app db:check",
+    "test": "pnpm -r --no-bail test",
+    "test:coverage": "pnpm -r --no-bail test:coverage",
+    "full-check": "pnpm format && pnpm typecheck && pnpm db:check && pnpm test:coverage"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "catalog:",
+    "@shoplinedev/app": "next",
+    "@shoplinedev/cli": "next",
+    "@shoplineos/cli": "^1.5.9",
+    "typescript": "catalog:"
+  }
+}

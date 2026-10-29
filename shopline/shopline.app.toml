@@ -1,0 +1,11 @@
+
+appName = "Blotout"
+appKey = ""
+appUrl = ""
+appCallbackUrlList = []
+isNewWindow = false
+subPathPrefix = "apps"
+proxyUrl = ""
+
+[access_scopes]
+scopes = "read_pixels,write_pixels,read_store_information"

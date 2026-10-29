@@ -1,0 +1,23 @@
+# Local development secrets. Copy to `.dev.vars` and fill in.
+# `.dev.vars` is gitignored; deployments use `wrangler secret put` instead.
+
+# The dev app and the Qinto sandbox, matching `env.dev` in `wrangler.jsonc`. They override the
+# production values at the top level of that file for `wrangler dev`.
+SHOPLINE_APP_KEY=14827ad8efbfc8855597a1e23a23900c09223001
+QINTO_API_ORIGIN=https://api.qinto.tech
+QINTO_AUTHORIZE_ORIGIN=https://portal.qinto.tech
+
+# From the SHOPLINE Partner Portal, or the CLI store the `shopline app dev` login writes.
+SHOPLINE_APP_SECRET=
+
+# From a Qinto OAuth app: portal.qinto.tech -> Developer -> OAuth apps.
+# Register the redirect URI you will actually use; Qinto matches it exactly.
+QINTO_CLIENT_ID=
+QINTO_CLIENT_SECRET=
+
+# 32 random bytes, base64: `openssl rand -base64 32`
+# Must be identical wherever the database is, or no stored token decrypts.
+TOKEN_KEK=
+
+# Local and test only: puts an unhandled error message in the 500 body.
+DEBUG_ERRORS=true
