@@ -24,7 +24,7 @@
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "^4.3.4",
     "@vitest/coverage-v8": "catalog:",
-    "happy-dom": "^20.0.0",
+    "happy-dom": "^21.0.4",
     "typescript": "catalog:",
     "vite": "^7.1.5",
     "vitest": "catalog:"
