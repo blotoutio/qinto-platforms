@@ -47,7 +47,7 @@ There are three SHOPLINE apps, one per config, and the CLI picks a config with `
 - **`shopline.app.production.toml`**: the public *Blotout* app behind `shopline.blotout.io`,
   committed. `appKey` stays empty until the app exists on SHOPLINE. Push a change to it with
   `shopline app config push -c production`.
-- **`shopline.app.sandbox.toml`**: the *[Sandbox] Blotout* app behind `shopline-sandbox.blotout.io`,
+- **`shopline.app.sandbox.toml`**: the *[Sandbox] Blotout* app behind `shopline-sandbox.qinto.tech`,
   committed. Push a change to it with `shopline app config push -c sandbox`.
 - **`shopline.app.dev.toml`**: the dev app, local, gitignored. Never point a deployed Worker at it.
   `pnpm dev`, `pnpm dev:reset`, `pnpm config:use` and `pnpm config:push` use it, and
@@ -72,7 +72,7 @@ Leave a dropdown on *Select* to skip it.
 | | Sandbox | Production |
 |---|---|---|
 | SHOPLINE app | *[Sandbox] Blotout* | *Blotout* |
-| Worker | `blotout-shopline-sandbox`, `shopline-sandbox.blotout.io` | `blotout-shopline`, `shopline.blotout.io` |
+| Worker | `blotout-shopline-sandbox`, `shopline-sandbox.qinto.tech` | `blotout-shopline`, `shopline.blotout.io` |
 | D1 | `blotout-shopline-sandbox` | `blotout-shopline` |
 | Qinto | `api.qinto.tech` | `qinto-api.blotout.io` |
 | Wrangler config | `app/wrangler.sandbox.jsonc` | `app/wrangler.production.jsonc` |

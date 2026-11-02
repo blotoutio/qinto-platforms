@@ -8,14 +8,12 @@
   "observability": { "enabled": true },
   // Hourly Blotout grant keep-alive; see `services/grant-keep-alive.ts`.
   "triggers": { "crons": ["23 * * * *"] },
-  "routes": [{ "pattern": "shopline-sandbox.blotout.io", "custom_domain": true }],
+  "routes": [{ "pattern": "shopline-sandbox.qinto.tech", "custom_domain": true }],
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "blotout-shopline-sandbox",
-      // The id `wrangler d1 create blotout-shopline-sandbox` prints. The Release workflow refuses
-      // to run while this is empty.
-      "database_id": "",
+      "database_id": "34c8312c-501e-4ca2-ad68-a0c3df661e0d",
       "migrations_dir": "drizzle/migrations"
     }
   ],
