@@ -1,8 +1,8 @@
 
 appName = "Blotout"
 appKey = ""
-appUrl = ""
-appCallbackUrlList = []
+appUrl = "https://shopline.blotout.io"
+appCallbackUrlList = ["https://shopline.blotout.io/api/auth/callback"]
 isNewWindow = false
 subPathPrefix = "apps"
 proxyUrl = ""

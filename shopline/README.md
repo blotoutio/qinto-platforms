@@ -27,7 +27,7 @@ to the browser, and the SPA must never hold one.
 ```bash
 pnpm install
 cp app/.dev.vars.example app/.dev.vars     # then fill it in — see the comments in the file
-cp shopline.app.toml shopline.app.dev.toml
+cp shopline.app.production.toml shopline.app.dev.toml
 pnpm --filter app db:migrate:local
 pnpm --filter web build                    # the Worker serves web/dist as its assets
 pnpm dev                                   # `shopline app dev -c dev`: tunnel + install on the dev store
@@ -42,35 +42,88 @@ pnpm --filter web preview:screens          # every screen, with the API stubbed,
 
 ## App configuration
 
-There are two SHOPLINE app configs, and the CLI picks one with `-c`:
+There are three SHOPLINE apps, one per config, and the CLI picks a config with `-c`:
 
-- **`shopline.app.toml`**: production, committed. `appKey`, `appUrl` and `appCallbackUrlList` stay
-  empty until there is a production app on SHOPLINE. The callback is `<appUrl>/api/auth/callback`.
-- **`shopline.app.dev.toml`**: local, gitignored. `pnpm dev`, `pnpm dev:reset`, `pnpm config:use`
-  and `pnpm config:push` use it, and `shopline app dev` rewrites its URLs with each run's tunnel, so
-  the production file never changes. `shopline app build` has no `-c` flag and uses whichever config
+- **`shopline.app.production.toml`**: the public *Blotout* app behind `shopline.blotout.io`,
+  committed. `appKey` stays empty until the app exists on SHOPLINE. Push a change to it with
+  `shopline app config push -c production`.
+- **`shopline.app.sandbox.toml`**: the *[Sandbox] Blotout* app behind `shopline-sandbox.blotout.io`,
+  committed. Push a change to it with `shopline app config push -c sandbox`.
+- **`shopline.app.dev.toml`**: the dev app, local, gitignored. Never point a deployed Worker at it.
+  `pnpm dev`, `pnpm dev:reset`, `pnpm config:use` and `pnpm config:push` use it, and
+  `shopline app dev` rewrites its URLs with each run's tunnel, so the committed files never change. `shopline app build` has no `-c` flag and uses whichever config
   the CLI last saved for this directory. Run `pnpm config:use` once so that default is `dev`.
 
-## Deploying the Worker
+## Releasing
 
-`app/wrangler.jsonc` has two environments: the top level is production (`blotout-shopline`) and
-`env.dev` is a deployed dev Worker (`blotout-shopline-dev`) with its own D1 database. Production
-points at Qinto production (`qinto-api.blotout.io`, `platform.blotout.io`) and dev at the Qinto
-sandbox (`api.qinto.tech`, `portal.qinto.tech`). Production leaves `SHOPLINE_APP_KEY` empty until
-there is a production app, and local `wrangler dev` takes the dev values from `app/.dev.vars`.
+Releases go out from GitHub: **Actions → Release → Run workflow**, the same form as solutions'
+Release. Release to `sandbox`, test on the sandbox store, then run the same release name against
+`production`.
+
+| Input | What it does |
+|---|---|
+| **App** = `shopline` | Lint, typecheck, `db:check`, tests, build the SPA, apply D1 migrations, deploy the Worker, tag `shopline-<release>-<type>` |
+| **SHOPLINE App** = `shopline` | `sl extension push` for the pixel and the theme extension |
+| **Type** | `sandbox` or `production` |
+| **Release name** | Run title and tag |
+
+Leave a dropdown on *Select* to skip it.
+
+| | Sandbox | Production |
+|---|---|---|
+| SHOPLINE app | *[Sandbox] Blotout* | *Blotout* |
+| Worker | `blotout-shopline-sandbox`, `shopline-sandbox.blotout.io` | `blotout-shopline`, `shopline.blotout.io` |
+| D1 | `blotout-shopline-sandbox` | `blotout-shopline` |
+| Qinto | `api.qinto.tech` | `qinto-api.blotout.io` |
+| Wrangler config | `app/wrangler.sandbox.jsonc` | `app/wrangler.production.jsonc` |
+| GitHub environment | `shopline-sandbox` | `shopline-production` |
+
+`app/wrangler.jsonc` is for local `wrangler dev` and the tests only. Wrangler configs don't share
+values, so a binding or var changed in one of the three has to be changed in the others too.
+
+An extension push lands as a **draft**. Publish the new version in the SHOPLINE Partner Portal; the
+run summary links to it.
+
+### What a release reads
+
+Each GitHub environment (`shopline-sandbox`, `shopline-production`) holds three secrets and nothing
+else: `CLOUDFLARE_APP_ACCOUNT_ID`, `CLOUDFLARE_APP_API_TOKEN` and `SHOPLINE_APP_SECRET`. Everything
+else is committed:
+
+- the app key and URL, from `shopline.app.<type>.toml`
+- the D1 database, from `app/wrangler.<type>.jsonc`
+- each extension's id and uuid, from `extensions/registrations.json`
+
+The Worker's own secrets (`SHOPLINE_APP_SECRET`, `QINTO_CLIENT_ID`, `QINTO_CLIENT_SECRET`,
+`TOKEN_KEK`) are set once on the Worker, never by a release.
+
+### Setting up a target, once
+
+1. Create the SHOPLINE app in the Partner Portal. Put its key and URL in `shopline.app.<type>.toml`
+   and its key in `SHOPLINE_APP_KEY` in `app/wrangler.<type>.jsonc`.
+2. `wrangler d1 create <database_name>`, and put the id in `app/wrangler.<type>.jsonc`.
+3. `wrangler secret put <NAME> --config wrangler.<type>.jsonc` for each of the four Worker secrets.
+   `TOKEN_KEK` must never change afterwards: no stored token decrypts under a different one.
+4. Register each extension: fill its `.env.prod` with the new app's key, secret, `PARTNER_ID` and an
+   `EXTENSION_TITLE` (the name it gets on SHOPLINE), leave the ids out, and run `sl extension push`
+   in its folder. The push writes `EXTENSION_ID` and `EXTENSION_UUID` back into `.env.prod`; copy
+   them into `extensions/registrations.json`.
+5. Create the `shopline-<type>` GitHub environment with the three secrets.
+
+Commit the files from steps 1, 2 and 4. A release refuses to run while any of those values is empty.
+
+### From a laptop
+
+The same steps by hand, if GitHub is unavailable:
 
 ```bash
-pnpm --filter app deploy                   # production
-pnpm --filter app db:migrate:remote
-
-pnpm --filter app deploy:dev               # dev
-pnpm --filter app db:migrate:dev
+pnpm --filter web build
+pnpm --filter app db:migrate:sandbox       # or db:migrate:production
+pnpm --filter app deploy:sandbox           # or deploy:production
 ```
 
-Before the first deploy of either, put the `database_id` from `wrangler d1 create <database_name>`
-into its block and set the four secrets with `wrangler secret put <NAME>` (add `--env dev` for dev).
-Wrangler does not inherit vars, databases or secrets into an environment, so a value changed at the
-top level has to be changed in `env.dev` too.
+Roll the Worker back with `wrangler rollback --config wrangler.<type>.jsonc`. D1 migrations are not
+rolled back.
 
 ## Before you call anything done
 

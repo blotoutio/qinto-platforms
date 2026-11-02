@@ -1,0 +1,97 @@
+name: 'Deploy SHOPLINE extension'
+description: 'Push one registered SHOPLINE app extension, authenticated by the app key and secret'
+
+inputs:
+  extension:
+    description: 'Folder under shopline/extensions'
+    required: true
+  type:
+    description: 'sandbox or production'
+    required: true
+  app-secret:
+    description: 'SHOPLINE app secret for this type'
+    required: true
+
+runs:
+  using: 'composite'
+
+  steps:
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        package_json_file: shopline/package.json
+
+    - name: Setup node
+      uses: actions/setup-node@v6
+      with:
+        node-version: 24
+        cache: pnpm
+        cache-dependency-path: shopline/pnpm-lock.yaml
+
+    - name: Install dependencies
+      shell: bash
+      working-directory: shopline
+      run: pnpm install --frozen-lockfile
+
+    # The app key comes from the committed app config and the extension's id and uuid from
+    # extensions/registrations.json. An empty id would make `sl` register a brand-new extension
+    # instead of updating ours, so it stops the run.
+    - name: Write .env.prod
+      shell: bash
+      working-directory: shopline
+      env:
+        EXTENSION: ${{ inputs.extension }}
+        TYPE: ${{ inputs.type }}
+        APP_SECRET: ${{ inputs.app-secret }}
+      run: |
+        toml="shopline.app.${TYPE}.toml"
+        app_key="$(sed -n 's/^appKey = "\(.*\)"$/\1/p' "$toml")"
+        read -r ext_id ext_uuid < <(node -e '
+          const [type, ext] = process.argv.slice(1)
+          const r = require("./extensions/registrations.json")[type]?.[ext] ?? {}
+          console.log(r.id || "-", r.uuid || "-")
+        ' "$TYPE" "$EXTENSION")
+        [ -n "$app_key" ] || { echo "::error::appKey is empty in $toml"; exit 1; }
+        [ -n "$APP_SECRET" ] || { echo "::error::SHOPLINE_APP_SECRET is not set in this GitHub environment"; exit 1; }
+        if [ "$ext_id" = "-" ] || [ "$ext_uuid" = "-" ]; then
+          echo "::error::$TYPE.$EXTENSION has no id or uuid in extensions/registrations.json"
+          exit 1
+        fi
+        umask 077
+        {
+          echo "SHOPLINE_APP_KEY=$app_key"
+          echo "SHOPLINE_APP_SECRET=$APP_SECRET"
+          echo "EXTENSION_TITLE=$EXTENSION"
+          echo "EXTENSION_ID=$ext_id"
+          echo "EXTENSION_UUID=$ext_uuid"
+        } > "extensions/$EXTENSION/.env.prod"
+
+    # `sl` treats a run as CI only when both CI and GITLAB_CI are set (utils/local.js in
+    # @shoplineos/cli). That mode skips the browser-login check, so the push uses only the values
+    # above. The upload lands as a draft; the CLI prints the Partner Portal link to publish it.
+    - name: Push extension
+      shell: bash
+      working-directory: shopline/extensions/${{ inputs.extension }}
+      env:
+        CI: 'true'
+        GITLAB_CI: 'true'
+        EXTENSION: ${{ inputs.extension }}
+        TYPE: ${{ inputs.type }}
+      run: |
+        log="$RUNNER_TEMP/sl-push-$EXTENSION.log"
+        pnpm exec sl extension push --verbose 2>&1 | tee "$log"
+        link="$(sed 's/\x1b\[[0-9;]*m//g' "$log" | grep -oE 'https://[^ )"]+' | tail -1 || true)"
+        {
+          echo "### $EXTENSION pushed to $TYPE as a draft"
+          if [ -n "$link" ]; then
+            echo "Publish the new version in the Partner Portal: $link"
+          else
+            echo "Publish the new version in the SHOPLINE Partner Portal."
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Remove .env.prod
+      if: always()
+      shell: bash
+      working-directory: shopline/extensions/${{ inputs.extension }}
+      run: rm -f .env.prod
