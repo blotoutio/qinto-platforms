@@ -27,7 +27,7 @@
   },
   "vars": {
     // The [Sandbox] Blotout app's key, from the SHOPLINE Partner Portal.
-    "SHOPLINE_APP_KEY": "",
+    "SHOPLINE_APP_KEY": "1d8d379979293e0bfdf6b86c39ac37f4cdbaa3bc",
     "SHOPLINE_API_HOST": "myshopline.com",
     "QINTO_API_ORIGIN": "https://api.qinto.tech",
     "QINTO_AUTHORIZE_ORIGIN": "https://portal.qinto.tech"
