@@ -157,7 +157,7 @@ would not — it changes per delivery.
 
 ## The shipping toolchain is `sl`, not `shopline`
 
-`shopline app dev` knows nothing about extensions — it discovers only `shopline.app.toml` and
+`shopline app dev` knows nothing about extensions — it discovers only the `shopline.app*.toml` configs and
 `shopline.web.toml`. App extensions are `@shoplineos/cli`, installed here as a root devDependency
 and invoked as `sl`:
 

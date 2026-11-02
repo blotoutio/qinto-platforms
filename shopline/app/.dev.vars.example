@@ -1,8 +1,7 @@
 # Local development secrets. Copy to `.dev.vars` and fill in.
 # `.dev.vars` is gitignored; deployments use `wrangler secret put` instead.
 
-# The dev app and the Qinto sandbox, matching `env.dev` in `wrangler.jsonc`. They override the
-# production values at the top level of that file for `wrangler dev`.
+# The dev app and the Qinto sandbox, the same values as `vars` in `wrangler.jsonc`.
 SHOPLINE_APP_KEY=14827ad8efbfc8855597a1e23a23900c09223001
 QINTO_API_ORIGIN=https://api.qinto.tech
 QINTO_AUTHORIZE_ORIGIN=https://portal.qinto.tech

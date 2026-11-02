@@ -1,0 +1,37 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Production: the public Blotout SHOPLINE app against Qinto production. Deployed by the Release
+  // workflow with type `production`, or `pnpm --filter app deploy:production`.
+  "name": "blotout-shopline",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-22",
+  "observability": { "enabled": true },
+  // Hourly Blotout grant keep-alive; see `services/grant-keep-alive.ts`.
+  "triggers": { "crons": ["23 * * * *"] },
+  "routes": [{ "pattern": "shopline.blotout.io", "custom_domain": true }],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "blotout-shopline",
+      // The id `wrangler d1 create blotout-shopline` prints. The Release workflow refuses to run
+      // while this is empty.
+      "database_id": "",
+      "migrations_dir": "drizzle/migrations"
+    }
+  ],
+  // The SPA. The Worker owns routing, so a request only falls through to an asset when no route matched.
+  "assets": {
+    "directory": "../web/dist",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "vars": {
+    // The public Blotout app's key, once it exists on SHOPLINE.
+    "SHOPLINE_APP_KEY": "",
+    "SHOPLINE_API_HOST": "myshopline.com",
+    "QINTO_API_ORIGIN": "https://qinto-api.blotout.io",
+    "QINTO_AUTHORIZE_ORIGIN": "https://platform.blotout.io"
+  }
+  // Secrets, set once with `wrangler secret put <NAME> --config wrangler.production.jsonc` and never
+  // by the workflow: SHOPLINE_APP_SECRET, QINTO_CLIENT_ID, QINTO_CLIENT_SECRET, TOKEN_KEK.
+}

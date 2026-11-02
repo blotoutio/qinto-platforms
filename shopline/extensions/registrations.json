@@ -1,0 +1,10 @@
+{
+  "sandbox": {
+    "blotout-pixel": { "id": "", "uuid": "" },
+    "blotout-theme": { "id": "", "uuid": "" }
+  },
+  "production": {
+    "blotout-pixel": { "id": "", "uuid": "" },
+    "blotout-theme": { "id": "", "uuid": "" }
+  }
+}

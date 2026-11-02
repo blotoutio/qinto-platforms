@@ -1,0 +1,116 @@
+name: 'Deploy Worker'
+description: 'Check, migrate D1, deploy a platform Worker and tag the release'
+
+inputs:
+  app:
+    description: 'Platform folder holding the pnpm workspace, e.g. shopline'
+    required: true
+  type:
+    description: 'sandbox or production; selects app/wrangler.<type>.jsonc'
+    required: true
+  release-name:
+    description: 'Release name; the tag is <app>-<release-name>'
+    required: true
+  cloudflare-account-id:
+    description: 'Cloudflare account id'
+    required: true
+  cloudflare-api-token:
+    description: 'Cloudflare API token with Workers Scripts and D1 edit'
+    required: true
+
+outputs:
+  app-url:
+    description: 'Public origin of the deployed Worker, from the app config'
+    value: ${{ steps.config.outputs.app-url }}
+
+runs:
+  using: 'composite'
+
+  steps:
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        package_json_file: ${{ inputs.app }}/package.json
+
+    - name: Setup node
+      uses: actions/setup-node@v6
+      with:
+        node-version: 24
+        cache: pnpm
+        cache-dependency-path: ${{ inputs.app }}/pnpm-lock.yaml
+
+    - name: Install dependencies
+      shell: bash
+      working-directory: ${{ inputs.app }}
+      run: pnpm install --frozen-lockfile
+
+    # There are no PR checks for this folder, so they run before anything ships.
+    - name: Check
+      shell: bash
+      working-directory: ${{ inputs.app }}
+      run: pnpm lint && pnpm typecheck && pnpm db:check && pnpm test
+
+    - name: Build admin SPA
+      shell: bash
+      working-directory: ${{ inputs.app }}
+      run: pnpm --filter web build
+
+    - name: Resolve config
+      id: config
+      shell: bash
+      working-directory: ${{ inputs.app }}/app
+      env:
+        TYPE: ${{ inputs.type }}
+      run: |
+        toml="../${{ inputs.app }}.app.${TYPE}.toml"
+        app_url="$(sed -n 's/^appUrl = "\(.*\)"$/\1/p' "$toml")"
+        [ -n "$app_url" ] || { echo "::error::appUrl is empty in $toml"; exit 1; }
+        echo "app-url=${app_url%/}" >> "$GITHUB_OUTPUT"
+
+        file="wrangler.${TYPE}.jsonc"
+        [ -f "$file" ] || { echo "::error::$file does not exist"; exit 1; }
+        db="$(node -e '
+          const src = require("fs").readFileSync(process.argv[1], "utf8")
+          const json = src.replace(/("(?:[^"\\]|\\.)*")|\/\/[^\n]*/g, (m, s) => s ?? "")
+          const db = JSON.parse(json).d1_databases?.[0]
+          if (!db?.database_id) throw new Error("d1_databases[0].database_id is empty in " + process.argv[1])
+          console.log(db.database_name)
+        ' "$file")"
+        echo "file=$file" >> "$GITHUB_OUTPUT"
+        echo "db=$db" >> "$GITHUB_OUTPUT"
+
+    # Runs before the deploy, so the live Worker briefly runs against the new schema. Migrations
+    # must therefore be additive; see app/AGENTS.md.
+    - name: Apply D1 migrations
+      uses: cloudflare/wrangler-action@v3
+      with:
+        accountId: ${{ inputs.cloudflare-account-id }}
+        apiToken: ${{ inputs.cloudflare-api-token }}
+        wranglerVersion: 4.130.0
+        packageManager: pnpm
+        workingDirectory: ${{ inputs.app }}/app
+        command: d1 migrations apply ${{ steps.config.outputs.db }} --remote --config ${{ steps.config.outputs.file }}
+
+    - name: Wrangler deploy
+      uses: cloudflare/wrangler-action@v3
+      with:
+        accountId: ${{ inputs.cloudflare-account-id }}
+        apiToken: ${{ inputs.cloudflare-api-token }}
+        wranglerVersion: 4.130.0
+        packageManager: pnpm
+        workingDirectory: ${{ inputs.app }}/app
+        command: deploy --config ${{ steps.config.outputs.file }}
+
+    - name: Tag
+      shell: bash
+      env:
+        TAG: ${{ inputs.app }}-${{ inputs.release-name }}
+      run: |
+        if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null; then
+          echo "::warning::Tag $TAG already exists; deployed without re-tagging"
+          exit 0
+        fi
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git tag -a "$TAG" -m "[${{ inputs.app }}] Release ${{ inputs.release-name }}"
+        git push origin "$TAG"

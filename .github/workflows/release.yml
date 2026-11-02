@@ -1,0 +1,88 @@
+name: Release
+run-name: ${{ format('{0} ({1})', github.event.inputs.release-name, github.event.inputs.type) }}
+
+# Manually triggered, like solutions' Release: pick what to deploy and where. Leave a dropdown on
+# "Select" to skip it. Each job runs in the `<choice>-<type>` GitHub environment, which holds that
+# target's credentials.
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: 'App (Worker, admin SPA, D1)'
+        type: choice
+        required: false
+        options:
+          - Select
+          - shopline
+      shopline:
+        description: 'SHOPLINE App (pixel and theme extensions)'
+        type: choice
+        required: false
+        options:
+          - Select
+          - shopline
+      type:
+        description: 'Type'
+        type: choice
+        required: true
+        options:
+          - production
+          - sandbox
+      release-name:
+        description: 'Release name'
+        required: true
+
+# contents: write lets the app job push the release tag.
+permissions:
+  contents: write
+
+# A second release to the same target waits; cancelling one could stop it between the migration
+# and the deploy.
+concurrency:
+  group: release-${{ github.event.inputs.type }}
+  cancel-in-progress: false
+
+jobs:
+  app:
+    if: ${{ github.event.inputs.app != 'Select' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: ${{ github.event.inputs.app }}-${{ github.event.inputs.type }}
+      url: ${{ steps.deploy.outputs.app-url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Deploy
+        id: deploy
+        uses: ./.github/actions/deploy-worker
+        with:
+          app: ${{ github.event.inputs.app }}
+          type: ${{ github.event.inputs.type }}
+          release-name: ${{ github.event.inputs.release-name }}-${{ github.event.inputs.type }}
+          cloudflare-account-id: ${{ secrets.CLOUDFLARE_APP_ACCOUNT_ID }}
+          cloudflare-api-token: ${{ secrets.CLOUDFLARE_APP_API_TOKEN }}
+
+  shopline:
+    if: ${{ github.event.inputs.shopline != 'Select' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: ${{ github.event.inputs.shopline }}-${{ github.event.inputs.type }}
+    strategy:
+      fail-fast: false
+      matrix:
+        extension: [blotout-pixel, blotout-theme]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Deploy
+        uses: ./.github/actions/deploy-shopline
+        with:
+          extension: ${{ matrix.extension }}
+          type: ${{ github.event.inputs.type }}
+          app-secret: ${{ secrets.SHOPLINE_APP_SECRET }}

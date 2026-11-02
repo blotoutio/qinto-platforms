@@ -8,6 +8,12 @@ The backend. Owns both OAuth systems, D1, and every token this app holds.
 when `schema.ts` and the committed migrations disagree, so a schema edit with no migration cannot
 ship — and the test suite runs against the committed SQL, not against `schema.ts`.
 
+## Migrations are additive
+
+A release applies migrations before it deploys the new Worker, so the live Worker runs against the
+new schema for a moment, and a migration is never rolled back. New columns are nullable or
+defaulted; a drop or rename ships in a later release than the code that stops using it.
+
 ## SQLite has no ALTER COLUMN
 
 A column type or constraint change makes drizzle-kit rebuild the whole table — create, copy, drop,
