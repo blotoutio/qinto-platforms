@@ -10,14 +10,30 @@ change that to make an import typecheck.
 
 Storage and cookies are `api.browser.*`, and every one of them is async and can reject.
 
-## `@blotout/blotout-sdk-browser` cannot be used here
+## The wire is `@blotout/qinto-sdk-browser`, run in a worker
 
-It throws `BlotoutEnvironmentError` outside a browser environment, claims `window.blotout`, reads
-`document.cookie` / `document.referrer` / `window.location` / `window.sessionStorage`, and injects a
-`<script>` tag to load `<destination>/q.js`. Every one of those fails in the sandbox.
+A SHOPLINE app pixel runs in a plain Web Worker (`wpm` starts it with `new Worker(blob)`): no
+`window`, no `document`. The SDK refuses to start without a `document`, so `worker-shims.ts` gives
+it the two globals it needs, `window = self` and a stub `document` with an empty `cookie`. That set
+was measured by running the SDK inside SHOPLINE's own unmodified `wpm`/`wpt` code, not reasoned out.
 
-`blotout-socket.ts` speaks the same WebSocket protocol directly instead — `wss://<host>/open`, one
-JSON frame per action.
+Use the SDK, don't speak the protocol by hand. The edge validates every browser frame with a strict
+schema; a hand-built client kept sending `context` after the edge moved to `observed` (Qinto
+`8c45fc25`, 26 Oct) and every frame was refused without a sound. The SDK owns the `/open` URL, the
+frame shape, event ids, ordering and reconnects, so a protocol change reaches us as an upgrade.
+
+- **Pinned to an exact version.** The shims depend on what the SDK touches, which is not a public
+  contract. Before an upgrade, run the bundle in the worker sandbox and check it still connects:
+  `configure.test.ts` covers the wire but runs in Node, not in a worker.
+- **Browser apps stay off.** `q.js` cannot load in a worker; the SDK logs
+  `document.createElement is not a function` once per page and carries on. App capture (`_fbp`,
+  `fbclid`, …) is driven by that config, so it never runs here either.
+- **The visitor is carried by hand.** The edge's cookie may not reach a worker's socket, so
+  `visitor.ts` keeps what `qinto:connect` reported in localStorage and hands it back as
+  `pageContext.visitor` (`uid` and `session` on `/open`), the documented route for sandboxed pages.
+  A visit idle for 30 minutes is dropped, because the edge would otherwise continue it.
+- **A first connect that fails is final for that page.** The SDK rejects every call after it; the
+  next page tries again.
 
 ## The `enabled` setting is the first thing `configure()` checks
 
@@ -40,7 +56,7 @@ nothing — an invented `false` reads as a refusal and the edge will act on it.
 
 ## Never throw at a SHOPLINE event handler
 
-A tracking failure is not the storefront's problem. Every path either queues, drops, or reports
+A tracking failure is not the storefront's problem. Every SDK promise is caught and reported
 through `onError`. Nothing propagates out of a subscription callback.
 
 ## The mapping, and the standard eleven only
@@ -51,24 +67,28 @@ a live storefront sends, not against a spec.
 
 | SHOPLINE event | Blotout event | Properties sent |
 |---|---|---|
-| `page_viewed` | `PageView` | `title`, `path` (the URL rides in the frame's `context.page`) |
+| `page_viewed` | `PageView` | `title`, `path` (the URL rides in the frame's `observed.page`) |
 | `product_viewed` | `ViewContent` | `currency`, `value`, `contents[1]` |
-| `product_added_to_cart` | `AddToCart` | `currency`, `value`, `contents`, `cartId` |
-| `product_removed_from_cart` | `RemoveFromCart` | `currency`, `value`, `contents`, `cartId` |
-| `checkout_started` | `InitiateCheckout` | `currency`, `value`, `contents`, `numItems` |
-| `payment_info_submitted` | `AddPaymentInfo` | `currency`, `value`, `paymentType`, `contents` |
-| `checkout_completed` | `Purchase` | `currency`, `value`, `orderId` (= `eventId`), `contents`, `taxCost`, `shippingCost`, `coupon` |
+| `product_added_to_cart` | `AddToCart` | `currency`, `value`, `contents` |
+| `product_removed_from_cart` | `RemoveFromCart` | `currency`, `value`, `contents` |
+| `checkout_started` | `InitiateCheckout` | `currency`, `value`, `contents` |
+| `payment_info_submitted` | `AddPaymentInfo` | `currency`, `value`, `contents` |
+| `checkout_completed` | `Purchase` | `currency`, `value`, `orderId` (= `eventId`), `contents`, `taxCost`, `shippingCost`, `discounts` (`[{ code }]` from `coupon`), `grossValue` (Σ line `value` × `quantity`) |
 | `search_submitted` | `Search` | `search` |
-| `lead` | `Lead` | `currency`, `value` (summed from the lines), `contents` |
+| `lead` | `Lead` | `currency`, `value` (summed from the lines), `name` and `category` (flat, from the first line) |
 
-Each line in `contents` is the platform's `ContentItem`: `id` ← `spuId`, `variantId` ← `skuId`,
-`sku` ← `skuItemNo`, **`item_price`** ← `price`, plus `title` and `category`. The names are not
-guessable and a provider that cannot find its field omits it in silence — `price`, `tax` and
-`shipping` were all being dropped that way once. Check `solutions/libs/providers/*` before
-renaming anything here.
+Each line in `contents` is the standard events docs' `Content`: `id` ← `spuId`, `variantId` ←
+`skuId`, `sku` ← `skuItemNo`, **`value`** ← `price` (one unit, not the line total), plus `title` and
+`category`. The docs say outright that `Content.item_price` is `Content.value`. A field the docs do
+not define is not sent; a destination that cannot find its field omits it in silence — `price`,
+`tax` and `shipping` were all being dropped that way once. Check
+https://docs.blotout.io/implementation/standard-events/ before renaming anything here.
 
-No event carries a checkout URL and none carries a discount total — `coupon` is the whole of it, and
-nothing reads it.
+Trait keys are snake_case (`first_name`, `last_name`, `postal_code`), the user data docs' own
+spelling, and the SHOPLINE customer id goes out as the custom trait `customer_id`.
+
+No event carries a checkout URL and none carries a discount amount or type — `coupon` is a bare code,
+so `discounts` carries `code` alone.
 
 `cart_viewed`, `collection_viewed`, `search_view_results`, `login` and `registration_completed` are
 deliberately unsubscribed: sending them under an invented name would pollute a merchant's event
@@ -88,8 +108,9 @@ verify against a real order before relying on a field.
 `AddShippingInfo` and `Subscribe` have no SHOPLINE source at all. That is documented, not a gap to
 fill.
 
-`Search` is subscribed to `search_submitted`, which the tested theme never publishes — it publishes
-`search_view_results` instead. Open, not fixed by guessing.
+`Search` is subscribed to `search_submitted`. On `srini-test.myshopline.com` (2 Nov 2026) it fires
+when a shopper submits a full search ("Search for …"), not from the predictive dropdown, and carries
+only the keyword: no currency or result list.
 
 ## Identity goes out once per session, not once per event
 
@@ -99,7 +120,7 @@ so the checkout's richer set (phone, name, address) and the order's `userInfo` s
 while the plain repeats do not.
 
 The comparison is per trait, not per object. Do not change it to whole-object equality: the
-thank-you page publishes `checkout_completed` before `page_viewed`, so a poorer `{email, customerId}`
+thank-you page publishes `checkout_completed` before `page_viewed`, so a poorer `{email, customer_id}`
 follows the order's full identity and must be dropped, not sent as a "different" object.
 
 What has been sent lives in the storefront's `sessionStorage` under

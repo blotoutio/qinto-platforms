@@ -1,16 +1,13 @@
-import type { SessionContext } from './blotout-socket'
-
 /**
- * The visitor's session, as far as this store's pixel can tell.
+ * The window identity is de-duplicated over (`identity.ts`), as far as this store's pixel can tell.
  *
- * Blotout's frames require `{ id, isNew, startedAt }`. The browser SDK keeps this in
- * `window.sessionStorage`; the sandbox reaches the storefront's own sessionStorage through an async
- * proxy, which is the same store and therefore the same lifetime — one browser tab.
- *
- * This is a *session*, not an identity. The visitor's persistent id is the `q_user_id` cookie the
- * Blotout edge sets on the WebSocket response; it is `httpOnly`, so nothing here can see it and
- * nothing here tries.
+ * This is local bookkeeping and never leaves the browser. The visit the edge counts is the edge's own
+ * (`vis_…`, reported in `qinto:connect` and carried by `visitor.ts`); this only decides how long an
+ * identify already sent stays sent. It lives in the storefront's sessionStorage, reached through the
+ * sandbox's async proxy, so it lasts one tab and 30 idle minutes, like the edge's visit.
  */
+
+export type SessionContext = { id: string; isNew: boolean; startedAt: number }
 
 type StorageProxy = {
   getItem: (key: string) => Promise<string | null>

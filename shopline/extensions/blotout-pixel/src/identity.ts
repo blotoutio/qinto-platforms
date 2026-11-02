@@ -1,6 +1,6 @@
-import type { BlotoutSocket } from './blotout-socket'
 import type { BlotoutTraits } from './mapping'
 import { identifierFor } from './mapping'
+import type { BlotoutSocket } from './qinto-client'
 
 /**
  * Identity, sent once per session rather than once per event.
@@ -68,7 +68,7 @@ export type SendIdentity = (traits: BlotoutTraits) => void
  * Sends identity when it has something new to say, and never twice for the same thing.
  *
  * "Something new" is per trait, not per object. The checkout steps and the order carry a richer set
- * (phone, name, address) and must get through; the plain `{email, customerId}` that shares the
+ * (phone, name, address) and must get through; the plain `{email, customer_id}` that shares the
  * thank-you page with the order's own identity adds nothing and must not. Comparing whole objects
  * would send that one and overwrite a rich identity with a poor one.
  *

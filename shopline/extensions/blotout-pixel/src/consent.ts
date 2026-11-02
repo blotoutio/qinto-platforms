@@ -1,4 +1,4 @@
-import type { ConsentCategories } from './blotout-socket'
+import type { ConsentCategories } from './qinto-client'
 
 /**
  * Reads whatever consent state the storefront happens to hold, and maps it to Blotout's categories.

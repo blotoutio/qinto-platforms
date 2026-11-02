@@ -1,13 +1,14 @@
 import type { ShoplinePixelsApi } from '@shoplineos/shopline-pixels-extension'
 import { configure } from '@shoplineos/shopline-pixels-extension'
 
-import { openBlotoutSocket } from './blotout-socket'
 import { readConsent } from './consent'
 import { identitySender, knownIdentity, readSentIdentity } from './identity'
+import { openQintoClient } from './qinto-client'
 import { resolveSession } from './session'
 import type { Analytics } from './subscriptions'
 import { subscribeAll } from './subscriptions'
 import type { PixelSettings } from './types'
+import { readVisitor, rememberVisitor, visitorContext } from './visitor'
 
 /**
  * Blotout's SHOPLINE pixel.
@@ -35,18 +36,24 @@ configure(async (api: ShoplinePixelsApi) => {
   const context = api.init.context
   const referrer = context.document.referrer
 
-  // Both reads in one round trip. Subscribing is already behind an await, and doubling that delay
+  // Every read in one round trip. Subscribing is already behind an await, and doubling that delay
   // is the one thing worth avoiding here.
   const storage = api.browser.sessionStorage
-  const [session, storedIdentity] = await Promise.all([resolveSession(storage), readSentIdentity(storage)])
+  const visitorStorage = api.browser.localStorage
+  const [session, storedIdentity, storedVisitor] = await Promise.all([
+    resolveSession(storage),
+    readSentIdentity(storage),
+    readVisitor(visitorStorage)
+  ])
 
-  const blotout = openBlotoutSocket({
+  const blotout = openQintoClient({
     destination,
     page: {
       url: context.window.location.href,
       ...(referrer === '' ? {} : { referrer })
     },
-    session,
+    visitor: visitorContext(storedVisitor, Date.now()),
+    onConnect: (detail) => visitorContext(rememberVisitor(visitorStorage, detail, Date.now()), Date.now()),
     onError: report
   })
 

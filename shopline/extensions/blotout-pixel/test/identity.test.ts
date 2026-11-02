@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import type { BlotoutSocket } from '../src/blotout-socket'
 import { identitySender, knownIdentity, readSentIdentity } from '../src/identity'
+import type { BlotoutSocket } from '../src/qinto-client'
 
 const KEY = 'blotout_shopline_identity'
 
@@ -98,11 +98,11 @@ describe('identitySender', () => {
     const send = identitySender({
       blotout: socket,
       sessionId: 'sl_1',
-      known: { email: 'ada@example.com', customerId: '1' },
+      known: { email: 'ada@example.com', customer_id: '1' },
       storage: storageOf(null)
     })
 
-    send({ email: 'ada@example.com', customerId: '1' })
+    send({ email: 'ada@example.com', customer_id: '1' })
 
     expect(sent).toEqual([])
   })

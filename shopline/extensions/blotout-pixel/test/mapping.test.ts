@@ -64,19 +64,25 @@ describe('toContent', () => {
   })
 
   it('defaults an absent quantity to one and an absent price to zero', () => {
-    expect(toContent({ spuId: 's' })).toMatchObject({ id: 's', quantity: 1, item_price: 0 })
+    expect(toContent({ spuId: 's' })).toMatchObject({ id: 's', quantity: 1, value: 0 })
   })
 
-  it('carries the descriptive fields only when present', () => {
+  it('carries the descriptive fields only when present, and nothing outside the docs Content type', () => {
     expect(toContent({ spuId: 's', title: 'Dress', variant: 'M / Blue', category: 'Dresses', skuItemNo: 'SKU-9' })).toEqual({
       id: 's',
       quantity: 1,
-      item_price: 0,
+      value: 0,
       title: 'Dress',
-      variant: 'M / Blue',
       category: 'Dresses',
       sku: 'SKU-9'
     })
+  })
+
+  it('sends the unit price as value, never item_price', () => {
+    const line = toContent({ spuId: 's', quantity: 3, price: 5 })
+
+    expect(line).toMatchObject({ quantity: 3, value: 5 })
+    expect(line).not.toHaveProperty('item_price')
   })
 })
 
@@ -125,10 +131,9 @@ describe('product_viewed → ViewContent', () => {
         {
           id: 'spu-1',
           quantity: 1,
-          item_price: 49.5,
+          value: 49.5,
           title: 'Multi Color Stitching Dress',
           variantId: 'sku-1',
-          variant: 'M',
           category: 'Dresses',
           sku: 'SKU-9'
         }
@@ -146,18 +151,12 @@ describe('cart changes → AddToCart / RemoveFromCart', () => {
     list: [{ spuId: 'spu-1', quantity: 2, price: 49.5, title: 'Dress' }]
   }
 
-  it('sends the value, currency, lines and cart id', () => {
+  it('sends the value, currency and lines, and not the cart id the docs do not define', () => {
     expect(cartChange(delivered(data))).toEqual({
       currency: 'USD',
       value: 99,
-      cartId: 'cart-1',
-      contents: [{ id: 'spu-1', quantity: 2, item_price: 49.5, title: 'Dress' }]
+      contents: [{ id: 'spu-1', quantity: 2, value: 49.5, title: 'Dress' }]
     })
-  })
-
-  it('omits an absent cart id', () => {
-    const { cartId: _dropped, ...withoutCart } = data
-    expect(cartChange(delivered(withoutCart))).not.toHaveProperty('cartId')
   })
 
   it('sends a zero value rather than dropping it', () => {
@@ -171,7 +170,7 @@ describe('cart changes → AddToCart / RemoveFromCart', () => {
 })
 
 describe('checkout_started → InitiateCheckout', () => {
-  it('counts the items as well as the money', () => {
+  it('sends the money and the lines, and no item count the docs do not define', () => {
     expect(
       initiateCheckout(
         delivered({
@@ -184,35 +183,28 @@ describe('checkout_started → InitiateCheckout', () => {
           ]
         })
       )
-    ).toMatchObject({ numItems: 3, currency: 'USD', value: 148.5 })
-  })
-
-  it('treats a line with no quantity as one item', () => {
-    expect(initiateCheckout(delivered({ ...COMMON, value: 10, currency: 'USD', list: [{ spuId: 'a', price: 10 }] }))).toMatchObject({
-      numItems: 1
-    })
-  })
-
-  it('reports an empty cart as zero items rather than omitting the count', () => {
-    expect(initiateCheckout(delivered({ ...COMMON, value: 0, currency: 'USD', list: [] }))).toEqual({
+    ).toEqual({
       currency: 'USD',
-      value: 0,
-      numItems: 0
+      value: 148.5,
+      contents: [
+        { id: 'a', quantity: 2, value: 49.5 },
+        { id: 'b', quantity: 1, value: 49.5 }
+      ]
     })
+  })
+
+  it('keeps a zero value for an empty cart', () => {
+    expect(initiateCheckout(delivered({ ...COMMON, value: 0, currency: 'USD', list: [] }))).toEqual({ currency: 'USD', value: 0 })
   })
 })
 
 describe('payment_info_submitted → AddPaymentInfo', () => {
-  it('carries the payment type when SHOPLINE supplies one', () => {
+  it('sends the money and the lines, and not the payment type the docs do not define', () => {
     expect(
       addPaymentInfo(
         delivered({ ...COMMON, value: 99, currency: 'USD', paymentType: 'credit_card', list: [{ spuId: 'a', quantity: 1, price: 99 }] })
       )
-    ).toMatchObject({ paymentType: 'credit_card' })
-  })
-
-  it('omits it when SHOPLINE does not', () => {
-    expect(addPaymentInfo(delivered({ ...COMMON, value: 99, currency: 'USD', list: [] }))).not.toHaveProperty('paymentType')
+    ).toEqual({ currency: 'USD', value: 99, contents: [{ id: 'a', quantity: 1, value: 99 }] })
   })
 })
 
@@ -236,7 +228,23 @@ describe('checkout_completed → Purchase', () => {
   })
 
   it('carries the money breakdown SHOPLINE actually sends', () => {
-    expect(purchase(delivered(order))).toMatchObject({ taxCost: 9.9, shippingCost: 5, coupon: 'WELCOME10' })
+    expect(purchase(delivered(order))).toMatchObject({ taxCost: 9.9, shippingCost: 5 })
+  })
+
+  it('sends the coupon as a discounts entry with only its code, since SHOPLINE gives nothing else', () => {
+    const sent = purchase(delivered(order))
+
+    expect(sent).toMatchObject({ discounts: [{ code: 'WELCOME10' }] })
+    expect(sent).not.toHaveProperty('coupon')
+  })
+
+  it('sends no discounts for a blank coupon', () => {
+    expect(purchase(delivered({ ...order, coupon: '  ' }))).not.toHaveProperty('discounts')
+  })
+
+  it('sends the lines total as grossValue, rounded to cents', () => {
+    expect(purchase(delivered(order))).toMatchObject({ grossValue: 99 })
+    expect(purchase(delivered({ ...order, list: [{ spuId: 'a', quantity: 3, price: 0.1 }] }))).toMatchObject({ grossValue: 0.3 })
   })
 
   it('omits a breakdown SHOPLINE did not send', () => {
@@ -265,6 +273,21 @@ describe('lead → Lead', () => {
     expect(lead(delivered({ ...COMMON, currency: 'USD', list: [{ price: 20, quantity: 2 }, { price: 10 }] }))).toMatchObject({ value: 50 })
   })
 
+  it('sends name and category flat, from the first line, and no contents', () => {
+    const sent = lead(
+      delivered({
+        ...COMMON,
+        currency: 'USD',
+        list: [
+          { spuId: 'a', title: 'Linen Tee', category: 'Tops', price: 29 },
+          { spuId: 'b', title: 'Shorts', category: 'Bottoms', price: 45 }
+        ]
+      })
+    )
+
+    expect(sent).toEqual({ currency: 'USD', value: 74, name: 'Linen Tee', category: 'Tops' })
+  })
+
   it('reports a lead with no monetary lines as zero, not as absent', () => {
     expect(lead(delivered({ ...COMMON, currency: 'USD', list: [] }))).toEqual({ currency: 'USD', value: 0 })
   })
@@ -276,7 +299,7 @@ describe('commonTraits', () => {
   })
 
   it('carries the login email and customer id for a signed-in visitor', () => {
-    expect(commonTraits({ login_em: 'a@b.com', customer_id: 'cust-1' })).toEqual({ email: 'a@b.com', customerId: 'cust-1' })
+    expect(commonTraits({ login_em: 'a@b.com', customer_id: 'cust-1' })).toEqual({ email: 'a@b.com', customer_id: 'cust-1' })
   })
 })
 
@@ -302,12 +325,12 @@ describe('contactTraits', () => {
       )
     ).toEqual({
       email: 'a@b.com',
-      firstName: 'Ada',
-      lastName: 'Lovelace',
+      first_name: 'Ada',
+      last_name: 'Lovelace',
       city: 'Hyderabad',
       state: 'Telangana',
       country: 'IN',
-      postalCode: '500001'
+      postal_code: '500001'
     })
   })
 
@@ -326,7 +349,7 @@ describe('contactTraits', () => {
 
 describe('identifierFor', () => {
   it('prefers email, because it resolves to one person across channels', () => {
-    expect(identifierFor({ email: 'A@B.com', customerId: 'cust-1' })).toBe('a@b.com')
+    expect(identifierFor({ email: 'A@B.com', customer_id: 'cust-1' })).toBe('a@b.com')
   })
 
   it('trims and lowercases, so the same person is not two identities', () => {
@@ -334,13 +357,13 @@ describe('identifierFor', () => {
   })
 
   it('falls back to the customer id', () => {
-    expect(identifierFor({ customerId: 'cust-1' })).toBe('cust-1')
+    expect(identifierFor({ customer_id: 'cust-1' })).toBe('cust-1')
   })
 
   it('returns null rather than an empty id, which Blotout refuses', () => {
     expect(identifierFor({})).toBeNull()
-    expect(identifierFor({ email: '   ', customerId: '' })).toBeNull()
-    expect(identifierFor({ email: 42, customerId: null })).toBeNull()
+    expect(identifierFor({ email: '   ', customer_id: '' })).toBeNull()
+    expect(identifierFor({ email: 42, customer_id: null })).toBeNull()
   })
 })
 
@@ -381,20 +404,20 @@ describe('purchaseTraits', () => {
     ).toEqual({
       email: 'Grace@Example.com',
       phone: '+447700900789',
-      firstName: 'Grace',
-      lastName: 'Hopper',
+      first_name: 'Grace',
+      last_name: 'Hopper',
       city: 'Birmingham',
       state: 'West Midlands',
       country: 'GB',
-      postalCode: 'B1 1AA',
-      customerId: '2792498953'
+      postal_code: 'B1 1AA',
+      customer_id: '2792498953'
     })
   })
 
   it('falls back to login_em when SHOPLINE sent no userInfo', () => {
     expect(purchaseTraits({ ...ORDER, login_em: 'ada@example.com', customer_id: 'cust-1' })).toEqual({
       email: 'ada@example.com',
-      customerId: 'cust-1'
+      customer_id: 'cust-1'
     })
   })
 
@@ -407,7 +430,7 @@ describe('purchaseTraits', () => {
     // customer id and no email linked to nothing.
     const traits = purchaseTraits({ ...ORDER, customer_id: 2792498953 })
 
-    expect(traits).toEqual({ customerId: '2792498953' })
+    expect(traits).toEqual({ customer_id: '2792498953' })
     expect(identifierFor(traits)).toBe('2792498953')
   })
 

@@ -1,4 +1,3 @@
-import type { BlotoutSocket } from './blotout-socket'
 import type { SendIdentity } from './identity'
 import type { BlotoutProperties } from './mapping'
 import {
@@ -14,6 +13,7 @@ import {
   search,
   viewContent
 } from './mapping'
+import type { BlotoutSocket } from './qinto-client'
 import { distinctBy } from './repeats'
 import type {
   CartChangeData,

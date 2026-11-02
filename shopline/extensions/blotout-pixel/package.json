@@ -10,12 +10,13 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@blotout/qinto-sdk-browser": "0.1.20",
     "@shoplineos/shopline-pixels-extension": "^0.1.0"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "catalog:",
+    "esbuild": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:",
-    "esbuild": "catalog:"
+    "vitest": "catalog:"
   }
 }

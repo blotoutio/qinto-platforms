@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import type { BlotoutSocket } from '../src/blotout-socket'
 import { identitySender } from '../src/identity'
+import type { BlotoutSocket } from '../src/qinto-client'
 import type { Analytics } from '../src/subscriptions'
 import { subscribeAll } from '../src/subscriptions'
 
@@ -127,7 +127,10 @@ describe('event mapping end to end', () => {
       list: [{ spuId: 'a', quantity: 2, price: 49.5 }]
     })
 
-    expect(app.tracks()[0]).toMatchObject({ event: 'AddToCart', properties: { cartId: 'c1', value: 99 } })
+    expect(app.tracks()[0]).toMatchObject({
+      event: 'AddToCart',
+      properties: { currency: 'USD', value: 99, contents: [{ id: 'a', quantity: 2, value: 49.5 }] }
+    })
   })
 
   it('product_removed_from_cart sends RemoveFromCart', () => {
@@ -141,14 +144,14 @@ describe('event mapping end to end', () => {
     const app = harness()
     app.fire('checkout_started', { ...ANON, value: 99, currency: 'USD', list: [{ spuId: 'a', quantity: 2, price: 49.5 }] })
 
-    expect(app.tracks()[0]).toMatchObject({ event: 'InitiateCheckout', properties: { numItems: 2 } })
+    expect(app.tracks()[0]).toMatchObject({ event: 'InitiateCheckout', properties: { currency: 'USD', value: 99 } })
   })
 
   it('payment_info_submitted sends AddPaymentInfo', () => {
     const app = harness()
     app.fire('payment_info_submitted', { ...ANON, value: 99, currency: 'USD', paymentType: 'card', list: [] })
 
-    expect(app.tracks()[0]).toMatchObject({ event: 'AddPaymentInfo', properties: { paymentType: 'card' } })
+    expect(app.tracks()[0]).toMatchObject({ event: 'AddPaymentInfo', properties: { currency: 'USD', value: 99 } })
   })
 
   it('search_submitted sends Search', () => {
@@ -246,7 +249,7 @@ describe('event mapping end to end', () => {
       list: []
     })
 
-    expect(app.sent[0]).toMatchObject({ kind: 'identify', id: SIGNED_IN.login_em, traits: { customerId: SIGNED_IN.customer_id } })
+    expect(app.sent[0]).toMatchObject({ kind: 'identify', id: SIGNED_IN.login_em, traits: { customer_id: SIGNED_IN.customer_id } })
     expect(app.sent[1]).toMatchObject({ kind: 'track', event: 'Purchase' })
   })
 })
@@ -256,7 +259,7 @@ describe('identity', () => {
     const app = harness()
     app.fire('page_viewed', { ...SIGNED_IN, title: 'x', url: 'u', path: '/p' })
 
-    expect(app.identifies()[0]).toMatchObject({ id: 'ada@example.com', traits: { email: 'ada@example.com', customerId: 'cust-1' } })
+    expect(app.identifies()[0]).toMatchObject({ id: 'ada@example.com', traits: { email: 'ada@example.com', customer_id: 'cust-1' } })
   })
 
   it('is skipped entirely for an anonymous visitor', () => {
@@ -298,7 +301,7 @@ describe('identity', () => {
     })
 
     expect(app.identifies()).toEqual([
-      { kind: 'identify', id: 'grace@example.com', traits: { email: 'grace@example.com', firstName: 'Grace', country: 'GB' } }
+      { kind: 'identify', id: 'grace@example.com', traits: { email: 'grace@example.com', first_name: 'Grace', country: 'GB' } }
     ])
     expect(app.tracks()).toEqual([
       { kind: 'track', event: 'Purchase', properties: expect.objectContaining({ orderId: 'ORDER-9' }), eventId: 'ORDER-9' }
@@ -442,7 +445,7 @@ describe('events SHOPLINE republishes', () => {
     currency: 'USD',
     title: 'Sweatshirt',
     variant: 'black,S',
-    item_price: 49.5,
+    price: 49.5,
     category: 'Tops'
   }
 
@@ -468,12 +471,12 @@ describe('events SHOPLINE republishes', () => {
     // Back to the first variant is a real second view of it, so three go out: only an *immediately*
     // repeated identity is dropped.
     const variants = app.tracks().map((entry) => {
-      const contents = entry.properties?.['contents'] as { variant?: string }[] | undefined
+      const contents = entry.properties?.['contents'] as { variantId?: string }[] | undefined
 
-      return contents?.[0]?.variant
+      return contents?.[0]?.variantId
     })
 
-    expect(variants).toEqual(['black,S', 'black,M', 'black,S'])
+    expect(variants).toEqual(['sku-1', 'sku-2', 'sku-1'])
   })
 
   it('sends one PageView when the same page is republished', () => {

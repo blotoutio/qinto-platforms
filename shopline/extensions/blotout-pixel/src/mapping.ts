@@ -27,24 +27,18 @@ export type BlotoutProperties = Record<string, unknown>
 export type BlotoutTraits = Record<string, unknown>
 
 /**
- * One line, in Blotout's `ContentItem` shape.
+ * One line, in the Qinto standard events `Content` shape.
  *
- * The field names are the platform's, not ours, and they are not guessable: providers read
- * `item_price` and ignore `price`, and `variantId` is what GA4 turns into `item_variant`. Checked
- * against the destination code rather than a doc — `libs/providers/*` in the platform repo, and the
- * Shopify integration's own line mapping, which is the same job against the same kind of store.
- *
- * `variant` is the one field here the platform does not define. SHOPLINE gives a readable label
- * ("black,S") as well as the id, nothing consumes it, and it costs a few bytes to keep a report
- * legible to a human.
+ * `value` is the price of ONE unit, not the line total: the event's own `value` carries the total.
+ * The docs say so outright ("Content.item_price is Content.value"), so the old `item_price` name
+ * is gone. A field outside the docs' `Content` type is not sent.
  */
 export type Content = {
   id: string
   quantity: number
-  item_price: number
+  value: number
   title?: string
   variantId?: string
-  variant?: string
   category?: string
   sku?: string
 }
@@ -95,11 +89,10 @@ export const toContent = (item: LineItem): Content => {
   return {
     id: item.spuId ?? item.skuId ?? '',
     quantity: item.quantity ?? 1,
-    item_price: item.price ?? 0,
+    value: item.price ?? 0,
     ...compact({
       title: item.title,
       variantId: item.skuId,
-      variant: item.variant,
       category: item.category,
       sku: item.skuItemNo
     })
@@ -108,6 +101,11 @@ export const toContent = (item: LineItem): Content => {
 
 export const toContents = (list: LineItem[] | undefined): Content[] => {
   return (list ?? []).map(toContent)
+}
+
+/** Σ unit price × quantity, rounded to cents so float noise never reaches a destination. */
+const linesTotal = (contents: Content[]): number => {
+  return Math.round(contents.reduce((total, content) => total + content.value * content.quantity, 0) * 100) / 100
 }
 
 export const pageView = (data: PageViewedData): BlotoutProperties => {
@@ -124,7 +122,6 @@ export const viewContent = (data: ProductViewedData): BlotoutProperties => {
         skuId: data.skuId,
         skuItemNo: data.skuItemNo,
         title: data.title,
-        variant: data.variant,
         price: data.price,
         category: data.category,
         quantity: 1
@@ -137,19 +134,15 @@ export const cartChange = (data: CartChangeData): BlotoutProperties => {
   return compact({
     currency: data.currency,
     value: data.value,
-    contents: toContents(data.list),
-    cartId: data.cartId
+    contents: toContents(data.list)
   })
 }
 
 export const initiateCheckout = (data: CheckoutData): BlotoutProperties => {
-  const contents = toContents(data.list)
-
   return compact({
     currency: data.currency,
     value: data.value,
-    contents,
-    numItems: contents.reduce((total, content) => total + content.quantity, 0)
+    contents: toContents(data.list)
   })
 }
 
@@ -157,7 +150,6 @@ export const addPaymentInfo = (data: PaymentInfoData): BlotoutProperties => {
   return compact({
     currency: data.currency,
     value: data.value,
-    paymentType: data.paymentType,
     contents: toContents(data.list)
   })
 }
@@ -170,16 +162,20 @@ export const addPaymentInfo = (data: PaymentInfoData): BlotoutProperties => {
  * is stable across retries, which `event.id` is not.
  */
 export const purchase = (data: CheckoutCompletedData): BlotoutProperties => {
+  const contents = toContents(data.list)
+
   return compact({
     currency: data.currency,
     value: data.value,
     orderId: data.orderSeq,
-    contents: toContents(data.list),
+    contents,
     // `taxCost` and `shippingCost`, not `tax` and `shipping`: those are the names the providers
     // read, and the wrong ones are dropped in silence.
     taxCost: data.taxAmount,
     shippingCost: data.shippingAmount,
-    coupon: data.coupon
+    // SHOPLINE gives the code alone, so the docs' optional `type` and `value` stay out.
+    discounts: isNonEmpty(data.coupon) ? [{ code: data.coupon.trim() }] : undefined,
+    grossValue: contents.length > 0 ? linesTotal(contents) : undefined
   })
 }
 
@@ -187,24 +183,33 @@ export const search = (data: SearchSubmittedData): BlotoutProperties => {
   return compact({ search: data.keyword })
 }
 
+/**
+ * Lead takes `name` and `category` as flat strings, not `contents` (standard events docs). A lead
+ * with several lines is named after its first.
+ */
 export const lead = (data: LeadData): BlotoutProperties => {
   const contents = toContents(data.list)
+  const first = contents[0]
 
   return compact({
     currency: data.currency,
-    value: contents.reduce((total, content) => total + content.item_price * content.quantity, 0),
-    contents
+    value: linesTotal(contents),
+    name: first?.title,
+    category: first?.category
   })
 }
 
 /**
  * Traits that ride every event.
  *
+ * Trait keys are snake_case, the standard traits' own spelling (user data docs). `customer_id` is
+ * not a standard trait; it lands as a custom one under this exact key.
+ *
  * `login_em` is only present for a signed-in customer, so most events contribute nothing and
  * `identify` is skipped rather than called with an empty object.
  */
 export const commonTraits = (data: EventCommon): BlotoutTraits => {
-  return compact({ email: data.login_em, customerId: asId(data.customer_id) })
+  return compact({ email: data.login_em, customer_id: asId(data.customer_id) })
 }
 
 /**
@@ -220,12 +225,12 @@ export const contactTraits = (data: ContactInfoData): BlotoutTraits => {
     ...commonTraits(data),
     email: data.email ?? data.login_em,
     phone: data.phone ?? address.phone,
-    firstName: address.firstName,
-    lastName: address.lastName,
+    first_name: address.firstName,
+    last_name: address.lastName,
     city: address.city,
     state: address.state,
     country: address.country,
-    postalCode: address.zip
+    postal_code: address.zip
   })
 }
 
@@ -246,14 +251,14 @@ export const purchaseTraits = (data: CheckoutCompletedData): BlotoutTraits => {
     ...commonTraits(data),
     email: user.email ?? data.login_em,
     phone: user.phone,
-    firstName: user.firstName,
-    lastName: user.lastName,
+    first_name: user.firstName,
+    last_name: user.lastName,
     city: user.city,
     // SHOPLINE calls it `province`; Blotout's trait is `state`, the same thing under both names.
     state: user.province,
     country: user.country,
-    postalCode: user.postcode,
-    customerId: asId(data.customer_id) ?? asId(user.user_id)
+    postal_code: user.postcode,
+    customer_id: asId(data.customer_id) ?? asId(user.user_id)
   })
 }
 
@@ -269,5 +274,5 @@ export const identifierFor = (traits: BlotoutTraits): string | null => {
     return email.trim().toLowerCase()
   }
 
-  return asId(traits['customerId']) ?? null
+  return asId(traits['customer_id']) ?? null
 }
