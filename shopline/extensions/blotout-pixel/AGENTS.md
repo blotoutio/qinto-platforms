@@ -14,8 +14,9 @@ Storage and cookies are `api.browser.*`, and every one of them is async and can 
 
 A SHOPLINE app pixel runs in a plain Web Worker (`wpm` starts it with `new Worker(blob)`): no
 `window`, no `document`. The SDK refuses to start without a `document`, so `worker-shims.ts` gives
-it the two globals it needs, `window = self` and a stub `document` with an empty `cookie`. That set
-was measured by running the SDK inside SHOPLINE's own unmodified `wpm`/`wpt` code, not reasoned out.
+it the globals it needs: `window = self` and a stub `document` with an empty `cookie` and a
+`createElement`/`head` pair for the `q.js` tag. That set was measured by running the SDK inside
+SHOPLINE's own unmodified `wpm`/`wpt` code, not reasoned out.
 
 Use the SDK, don't speak the protocol by hand. The edge validates every browser frame with a strict
 schema; a hand-built client kept sending `context` after the edge moved to `observed` (Qinto
@@ -25,9 +26,11 @@ frame shape, event ids, ordering and reconnects, so a protocol change reaches us
 - **Pinned to an exact version.** The shims depend on what the SDK touches, which is not a public
   contract. Before an upgrade, run the bundle in the worker sandbox and check it still connects:
   `configure.test.ts` covers the wire but runs in Node, not in a worker.
-- **Browser apps stay off.** `q.js` cannot load in a worker; the SDK logs
-  `document.createElement is not a function` once per page and carries on. App capture (`_fbp`,
-  `fbclid`, …) is driven by that config, so it never runs here either.
+- **Browser apps stay off.** `q.js` cannot load in a worker. The stub `<script>` reports itself
+  loaded as soon as it is appended, so the SDK connects with no apps and logs nothing. Without the
+  stub the SDK logs `document.createElement is not a function` on every page and SHOPLINE posts it
+  to `/capture/exception`. App capture (`_fbp`, `fbclid`, …) is driven by that config, so it never
+  runs here either.
 - **The visitor is carried by hand.** The edge's cookie may not reach a worker's socket, so
   `visitor.ts` keeps what `qinto:connect` reported in localStorage and hands it back as
   `pageContext.visitor` (`uid` and `session` on `/open`), the documented route for sandboxed pages.

@@ -146,15 +146,18 @@ const loadPage = async (api: SandboxApi, accept = true): Promise<FakeEdgeSocket 
 
 let restore: () => void
 let warnings: unknown[][]
+let errors: unknown[][]
 
 beforeEach(() => {
   restore = withFakeEdge()
   warnings = []
+  errors = []
   vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
     warnings.push(args)
   })
-  // The SDK says so on every page that cannot load q.js, which a worker never can.
-  vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+    errors.push(args)
+  })
 })
 
 afterEach(() => {
@@ -195,6 +198,17 @@ describe('the kill switch', () => {
     expect(FakeEdgeSocket.instances).toHaveLength(0)
     expect(subscribed()).toEqual([])
     expect(reads.cookies).toEqual([])
+  })
+})
+
+describe('a page load in the worker', () => {
+  it('connects without logging an error, so SHOPLINE has no exception to capture', async () => {
+    const { api } = sandbox({ destination: 'q.example.com', enabled: 'true' })
+
+    const socket = await loadPage(api)
+
+    expect(socket).toBeDefined()
+    expect(errors).toEqual([])
   })
 })
 

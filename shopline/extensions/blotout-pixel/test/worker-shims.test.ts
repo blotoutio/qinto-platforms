@@ -17,6 +17,34 @@ describe('installWorkerShims', () => {
     expect((document['removeEventListener'] as () => unknown)()).toBeUndefined()
   })
 
+  it('lets the SDK inject q.js without throwing, and reports the script loaded at once', () => {
+    const scope: Record<string, unknown> = {}
+    installWorkerShims(scope)
+    const document = scope['document'] as {
+      createElement: (tag: string) => { onload: (() => void) | null; onerror: (() => void) | null; dataset: object }
+      head: { appendChild: <T>(node: T) => T }
+    }
+
+    const script = document.createElement('script')
+    let loaded = 0
+    let failed = 0
+    script.onload = () => loaded++
+    script.onerror = () => failed++
+
+    expect(script.dataset).toEqual({})
+    expect(document.head.appendChild(script)).toBe(script)
+    expect(loaded).toBe(1)
+    expect(failed).toBe(0)
+  })
+
+  it('appends a node with no onload without throwing', () => {
+    const scope: Record<string, unknown> = {}
+    installWorkerShims(scope)
+    const document = scope['document'] as { head: { appendChild: <T>(node: T) => T } }
+
+    expect(() => document.head.appendChild({})).not.toThrow()
+  })
+
   it('leaves a real window and document alone', () => {
     const window = { real: true }
     const document = { cookie: 'a=1' }
