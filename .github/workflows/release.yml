@@ -62,8 +62,8 @@ jobs:
           app: ${{ github.event.inputs.app }}
           type: ${{ github.event.inputs.type }}
           release-name: ${{ github.event.inputs.release-name }}-${{ github.event.inputs.type }}
-          cloudflare-account-id: ${{ secrets.CLOUDFLARE_APP_ACCOUNT_ID }}
-          cloudflare-api-token: ${{ secrets.CLOUDFLARE_APP_API_TOKEN }}
+          cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
   shopline:
     if: ${{ github.event.inputs.shopline != 'Select' }}

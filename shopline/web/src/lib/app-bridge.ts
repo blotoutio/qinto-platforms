@@ -53,9 +53,12 @@ export const toast = {
  *
  * Host chrome comes from App Bridge, never hand-rolled: a modal rendered inside our iframe would be
  * clipped by it and would not dim the Admin behind it.
+ *
+ * `confirm`, not `danger`: the Admin labels a `danger` modal's button **Delete** and App Bridge has
+ * no option to relabel it, so it would misdescribe every action here — none of them deletes.
  */
-export const confirmDanger = (input: { title: string; content: string; onOk: () => Promise<void> | void }): void => {
-  Modal.create(bridge()).open({ type: 'danger', title: input.title, content: input.content, onOk: input.onOk })
+export const confirmAction = (input: { title: string; content: string; onOk: () => Promise<void> | void }): void => {
+  Modal.create(bridge()).open({ type: 'confirm', title: input.title, content: input.content, onOk: input.onOk })
 }
 
 /**
