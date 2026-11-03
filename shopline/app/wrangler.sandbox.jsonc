@@ -8,13 +8,7 @@
   "observability": { "enabled": true },
   // Hourly Blotout grant keep-alive; see `services/grant-keep-alive.ts`.
   "triggers": { "crons": ["23 * * * *"] },
-  // qinto.tech carries Qinto's `*/*` WFP dispatcher route, and any route outranks a Custom Domain on
-  // the same hostname. The more specific `/*` route claims this hostname back, as Qinto's own
-  // Workers on the zone do; without it every request answers `403 path not allowed`.
-  "routes": [
-    { "pattern": "shopline-sandbox.qinto.tech", "custom_domain": true },
-    { "pattern": "shopline-sandbox.qinto.tech/*", "zone_name": "qinto.tech" }
-  ],
+  "routes": [{ "pattern": "shopline-sandbox.qinto.tech", "custom_domain": true }],
   "d1_databases": [
     {
       "binding": "DB",
