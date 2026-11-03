@@ -47,7 +47,7 @@ There are three SHOPLINE apps, one per config, and the CLI picks a config with `
 - **`shopline.app.production.toml`**: the public *Blotout* app behind `shopline.blotout.io`,
   committed. `appKey` stays empty until the app exists on SHOPLINE. Push a change to it with
   `shopline app config push -c production`.
-- **`shopline.app.sandbox.toml`**: the *[Sandbox] Blotout* app behind `shopline-sandbox.blotout.io`,
+- **`shopline.app.sandbox.toml`**: the *[Sandbox] Blotout* app behind `shopline-sandbox.qinto.tech`,
   committed. Push a change to it with `shopline app config push -c sandbox`.
 - **`shopline.app.dev.toml`**: the dev app, local, gitignored. Never point a deployed Worker at it.
   `pnpm dev`, `pnpm dev:reset`, `pnpm config:use` and `pnpm config:push` use it, and
@@ -72,7 +72,7 @@ Leave a dropdown on *Select* to skip it.
 | | Sandbox | Production |
 |---|---|---|
 | SHOPLINE app | *[Sandbox] Blotout* | *Blotout* |
-| Worker | `blotout-shopline-sandbox`, `shopline-sandbox.blotout.io` | `blotout-shopline`, `shopline.blotout.io` |
+| Worker | `blotout-shopline-sandbox`, `shopline-sandbox.qinto.tech` | `blotout-shopline`, `shopline.blotout.io` |
 | D1 | `blotout-shopline-sandbox` | `blotout-shopline` |
 | Qinto | `api.qinto.tech` | `qinto-api.blotout.io` |
 | Wrangler config | `app/wrangler.sandbox.jsonc` | `app/wrangler.production.jsonc` |
@@ -81,8 +81,29 @@ Leave a dropdown on *Select* to skip it.
 `app/wrangler.jsonc` is for local `wrangler dev` and the tests only. Wrangler configs don't share
 values, so a binding or var changed in one of the three has to be changed in the others too.
 
-An extension push lands as a **draft**. Publish the new version in the SHOPLINE Partner Portal; the
-run summary links to it.
+An extension push lands as a **draft**, and a store only runs what an app version has published.
+
+### Publishing the extensions
+
+A release with **SHOPLINE App** set uploads drafts and nothing more. SHOPLINE has no API or CLI
+command that creates a version, so this step is manual, once per release that pushed the extensions:
+
+1. Open the Partner Portal link in the run summary, or **Apps → the app → App version → Create
+   version**.
+2. Check that the **Extensions** table lists both **Blotout** (WebPixel) and
+   **theme-app-extension**, then **Create and publish**. The version name can stay blank.
+3. Open the new version from the **App version** list and check that its Extensions list shows both.
+   A version published with an empty list is accepted without complaint, and the pixel then never
+   reaches a store: the app reports "The pixel settings have not reached SHOPLINE yet".
+4. About a minute later, open the app on a store and press **Check again**.
+
+A release that only deploys the Worker (**SHOPLINE App** left on *Select*) needs no new version.
+
+### Installing
+
+Open `https://<app host>/api/auth?handle=<store handle>` while logged in to that store's Admin, where
+the handle is the part before `.myshopline.com`. The app host is `shopline-sandbox.qinto.tech` for
+sandbox and `shopline.blotout.io` for production.
 
 ### What a release reads
 

@@ -80,7 +80,17 @@ runs:
       run: |
         log="$RUNNER_TEMP/sl-push-$EXTENSION.log"
         pnpm exec sl extension push --verbose 2>&1 | tee "$log"
-        link="$(sed 's/\x1b\[[0-9;]*m//g' "$log" | grep -oE 'https://[^ )"]+' | tail -1 || true)"
+        # Without a TTY the CLI wraps at 80 columns, splitting the link inside its box. The box is
+        # followed by a `[1] https://…` footnote whose wrapped tail is on the next line, so the link
+        # is that line joined with any URL-only lines after it. A push printed without a box (the
+        # theme's) has no footnote and keeps the link on one line.
+        plain="$(sed 's/\x1b\[[0-9;]*m//g' "$log")"
+        link="$(awk '
+          url != "" { if ($0 ~ /^[A-Za-z0-9._~%\/?&=+#-]+$/) { url = url $0; next } print url; exit }
+          match($0, /^[[:space:]]*\[[0-9]+\] https:\/\/[^ ]+/) { url = substr($0, RSTART, RLENGTH); sub(/^[[:space:]]*\[[0-9]+\] /, "", url) }
+          END { if (url != "") print url }
+        ' <<<"$plain" | head -1)"
+        [ -n "$link" ] || link="$(grep -oE 'https://[^ )"]+' <<<"$plain" | tail -1 || true)"
         {
           echo "### $EXTENSION pushed to $TYPE as a draft"
           if [ -n "$link" ]; then

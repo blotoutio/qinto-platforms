@@ -1,10 +1,22 @@
 {
   "sandbox": {
-    "blotout-pixel": { "id": "", "uuid": "" },
-    "blotout-theme": { "id": "", "uuid": "" }
+    "blotout-pixel": {
+      "id": "10504",
+      "uuid": "837cfea3-6735-4ab2-b024-b50a6d79e839"
+    },
+    "blotout-theme": {
+      "id": "10503",
+      "uuid": "1be28442-7620-4f2c-b0b7-3e866989b020"
+    }
   },
   "production": {
-    "blotout-pixel": { "id": "", "uuid": "" },
-    "blotout-theme": { "id": "", "uuid": "" }
+    "blotout-pixel": {
+      "id": "10521",
+      "uuid": "5877bbc2-0822-47f5-9456-178cad20b9a9"
+    },
+    "blotout-theme": {
+      "id": "10522",
+      "uuid": "41448e25-024f-4694-a656-664dc60bd043"
+    }
   }
 }
