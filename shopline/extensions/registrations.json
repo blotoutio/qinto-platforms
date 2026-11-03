@@ -11,12 +11,12 @@
   },
   "production": {
     "blotout-pixel": {
-      "id": "",
-      "uuid": ""
+      "id": "10521",
+      "uuid": "5877bbc2-0822-47f5-9456-178cad20b9a9"
     },
     "blotout-theme": {
-      "id": "",
-      "uuid": ""
+      "id": "10522",
+      "uuid": "41448e25-024f-4694-a656-664dc60bd043"
     }
   }
 }

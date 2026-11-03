@@ -1,6 +1,6 @@
 
 appName = "Blotout"
-appKey = ""
+appKey = "f866819695e6314819cd00c09ef830b2b05ebae8"
 appUrl = "https://shopline.blotout.io"
 appCallbackUrlList = ["https://shopline.blotout.io/api/auth/callback"]
 isNewWindow = false

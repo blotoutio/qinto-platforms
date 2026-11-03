@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 import { api } from '../lib/api'
-import { confirmDanger, toast } from '../lib/app-bridge'
+import { confirmAction, toast } from '../lib/app-bridge'
 import type { PushFailureReason, Status } from '../lib/types'
 import { AppEmbedNote } from './AppEmbedNote'
 import { AccountCard } from './ready/AccountCard'
@@ -68,7 +68,7 @@ export function ReadyScreen({ status, onChanged }: Props) {
       return
     }
 
-    confirmDanger({
+    confirmAction({
       title: 'Stop tracking for this store?',
       content:
         'No events will be sent to Qinto from your storefront. Your Qinto connection and site selection are kept, so you can turn this back on at any time. It takes effect on each visitor’s next page load.',
@@ -89,7 +89,7 @@ export function ReadyScreen({ status, onChanged }: Props) {
     })
 
   const changeSite = () =>
-    confirmDanger({
+    confirmAction({
       title: 'Choose a different site?',
       content: 'Tracking stops until you pick a new site. Your Qinto connection stays.',
       onOk: () =>
@@ -99,7 +99,7 @@ export function ReadyScreen({ status, onChanged }: Props) {
     })
 
   const disconnect = () =>
-    confirmDanger({
+    confirmAction({
       title: 'Disconnect from Qinto?',
       content: 'Tracking stops and this store forgets which site it was sending to. You can reconnect at any time.',
       onOk: () =>

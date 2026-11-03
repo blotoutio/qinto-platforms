@@ -294,6 +294,21 @@ describe('changing site and disconnecting', () => {
     })
   })
 
+  // The Admin labels a `danger` modal's button "Delete", which none of these actions does.
+  it.each([
+    ['Change site', () => screen.getByRole('button', { name: 'Change site' }).click()],
+    ['Disconnect', () => screen.getByRole('button', { name: 'Disconnect' }).click()],
+    ['Stop tracking', () => toggle().click()]
+  ])('%s asks with a confirm modal, never a danger one', async (_name, open) => {
+    show(readyStatus())
+    open()
+
+    await waitFor(() => {
+      expect(hostCalls.modals).toHaveLength(1)
+    })
+    expect(hostCalls.modals[0]?.type).toBe('confirm')
+  })
+
   it('confirms before disconnecting, and says what is lost', async () => {
     const { onChanged } = show(readyStatus(), () => ({ body: { disconnected: true } }))
     screen.getByRole('button', { name: 'Disconnect' }).click()
