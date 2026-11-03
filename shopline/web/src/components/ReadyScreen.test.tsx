@@ -41,7 +41,7 @@ describe('what the merchant sees', () => {
     show(readyStatus())
 
     expect(screen.getByText('srini-shopline.com')).toBeTruthy()
-    expect(screen.getByText('q.srini-shopline.com')).toBeTruthy()
+    expect(screen.getAllByText('q.srini-shopline.com').length).toBeGreaterThan(0)
     expect(screen.getByText('karri’s Team')).toBeTruthy()
   })
 
@@ -535,5 +535,138 @@ describe('a saved site whose team was not approved on reconnect', () => {
     show(readyStatus())
 
     expect(screen.queryByRole('button', { name: 'Approve that team on Qinto' })).toBeNull()
+  })
+})
+
+type Selection = NonNullable<Status['selection']>
+
+const withSelection = (patch: Partial<Selection>): Status => {
+  const status = readyStatus()
+  if (status.selection === null) {
+    throw new Error('the ready fixture has a selection')
+  }
+
+  return { ...status, selection: { ...status.selection, ...patch } }
+}
+
+describe('the destination switch', () => {
+  const option = (name: string) => screen.getByRole('radio', { name: new RegExp(`^${name}`) }) as HTMLInputElement
+  it('switches to the Qinto URL and pushes it', async () => {
+    const { onChanged } = show(readyStatus(), () => ({ body: { deliveryHost: 'qsrini-shoplinecom-1.dev.qinto.tech', pushed: true } }))
+
+    expect(option('Your own domain').checked).toBe(true)
+    fireEvent.click(option('Qinto URL'))
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalled())
+    expect(http.calls.find((call) => call.path === '/api/setup/destination')).toMatchObject({
+      method: 'PUT',
+      body: { target: 'development_url' }
+    })
+    expect(hostCalls.toasts.some((toast) => toast.level !== 'error' && toast.message.includes('qsrini-shoplinecom-1'))).toBe(true)
+  })
+
+  it('shows a spinner on the option it is switching to until the switch finishes', async () => {
+    let finish: () => void = () => undefined
+    const onChanged = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        })
+    )
+    http = stubHttp(() => ({ body: { deliveryHost: 'qsrini-shoplinecom-1.dev.qinto.tech', pushed: true } }))
+    render(<ReadyScreen status={readyStatus()} onChanged={onChanged} />)
+
+    fireEvent.click(option('Qinto URL'))
+
+    expect((await screen.findByRole('status')).textContent).toBe('Switching to the Qinto URL…')
+    expect(option('Your own domain').disabled).toBe(true)
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalled())
+    finish()
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull())
+  })
+
+  it('reports a push SHOPLINE refused', async () => {
+    show(readyStatus(), () => ({ body: { deliveryHost: 'x', pushed: false, error: 'SHOPLINE said no' } }))
+
+    fireEvent.click(option('Qinto URL'))
+
+    await waitFor(() => expect(hostCalls.toasts.some((toast) => toast.message === 'SHOPLINE said no')).toBe(true))
+  })
+
+  it('switches back to the first-party domain', async () => {
+    const { onChanged } = show(withSelection({ usingDevelopmentUrl: true, deliveryHost: 'qsrini-shoplinecom-1.dev.qinto.tech' }), () => ({
+      body: { deliveryHost: 'q.srini-shopline.com', pushed: true }
+    }))
+
+    expect(option('Qinto URL').checked).toBe(true)
+    fireEvent.click(option('Your own domain'))
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalled())
+    expect(http.calls.find((call) => call.path === '/api/setup/destination')).toMatchObject({ body: { target: 'domain' } })
+  })
+
+  it('does nothing when the active option is clicked again', () => {
+    show(readyStatus())
+
+    fireEvent.click(option('Your own domain'))
+
+    expect(http.calls).toHaveLength(0)
+  })
+
+  it('is disabled for a site with no Qinto URL', () => {
+    show(withSelection({ hosts: { domain: 'q.srini-shopline.com', developmentUrl: null } }))
+
+    expect(option('Qinto URL').disabled).toBe(true)
+    expect(screen.getByText('This site has no Qinto URL')).toBeTruthy()
+  })
+
+  it('points at the DNS records after moving to a domain that does not resolve yet', () => {
+    show(withSelection({ dnsValid: false, dnsRecords: [{ type: 'CNAME', name: 'q', value: 'edge' }] }))
+
+    const scroll = vi.fn()
+    const card = document.getElementById('dns-records')
+    if (card === null) {
+      throw new Error('the DNS card is on screen')
+    }
+    card.scrollIntoView = scroll
+    fireEvent.click(screen.getByRole('button', { name: 'Show the DNS records' }))
+
+    expect(scroll).toHaveBeenCalled()
+  })
+})
+
+describe('allowed origins', () => {
+  it('offers to add a storefront the site does not allow', async () => {
+    const status = withSelection({ origins: { state: 'missing', missing: ['https://srini-test.myshopline.com'] } })
+    show(status, () => ({ body: { origins: { state: 'allowed', missing: [] } } }))
+
+    expect(screen.getByText('https://srini-test.myshopline.com')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Add to allowed origins' }))
+
+    await waitFor(() => expect(http.calls.some((call) => call.path === '/api/setup/origins' && call.method === 'POST')).toBe(true))
+    await waitFor(() => expect(hostCalls.toasts.some((toast) => toast.message.includes('allowed origins'))).toBe(true))
+  })
+
+  it('says a retry hit a full list', async () => {
+    const status = withSelection({ origins: { state: 'missing', missing: ['https://a.example.com'] } })
+    show(status, () => ({ body: { origins: { state: 'full', missing: ['https://a.example.com'] } } }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to allowed origins' }))
+
+    await waitFor(() => expect(hostCalls.toasts.some((toast) => toast.message.includes('20 origins'))).toBe(true))
+  })
+
+  it('explains a full list without offering a retry', () => {
+    show(withSelection({ origins: { state: 'full', missing: ['https://a.example.com'] } }))
+
+    expect(screen.getByText(/already allows 20 origins/)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Add to allowed origins' })).toBeNull()
+  })
+
+  it('says nothing when the site does not check origins', () => {
+    show(withSelection({ origins: { state: 'check_off', missing: [] } }))
+
+    expect(screen.queryByText(/allowed origins/)).toBeNull()
   })
 })

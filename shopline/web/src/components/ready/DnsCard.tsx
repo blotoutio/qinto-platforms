@@ -4,6 +4,8 @@ import { ShareDns } from '../ShareDns'
 
 type Props = { selection: NonNullable<Status['selection']> }
 
+export const DNS_CARD_ID = 'dns-records'
+
 /**
  * The records still to publish, on the screen a merchant lands on every day.
  *
@@ -12,7 +14,7 @@ type Props = { selection: NonNullable<Status['selection']> }
  */
 export function DnsCard({ selection }: Props) {
   return (
-    <div className='card'>
+    <div className='card' id={DNS_CARD_ID}>
       <div className='stack'>
         <h2>
           DNS records for <code>{selection.deliveryHost}</code>

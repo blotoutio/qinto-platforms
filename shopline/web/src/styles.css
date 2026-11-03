@@ -283,6 +283,80 @@ label {
   outline-offset: 2px;
 }
 
+/* Destination choice */
+
+.choice-row {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  padding: 10px 12px 10px 40px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    border-color 140ms,
+    background-color 140ms;
+}
+
+.choice-row:hover:not(.choice-row-disabled) {
+  border-color: var(--brand-200);
+}
+
+.choice-row input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.choice-row::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  top: 13px;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--surface);
+}
+
+.choice-row-active {
+  border-color: var(--brand-500);
+  background: var(--brand-50);
+}
+
+.choice-row-active::before {
+  border-color: var(--brand-500);
+  box-shadow: inset 0 0 0 3px var(--surface);
+  background: var(--brand-500);
+}
+
+.choice-row-pending::before {
+  content: none;
+}
+
+.choice-spinner {
+  position: absolute;
+  left: 14px;
+  top: 13px;
+}
+
+.choice-row-disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.choice-row:has(input:focus-visible) {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 2px;
+}
+
+.choice-host {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
 /* Status */
 
 .badge {
@@ -492,6 +566,11 @@ td {
   border-top-color: var(--brand-500);
   border-radius: 50%;
   animation: spin 700ms linear infinite;
+}
+
+.spinner-sm {
+  width: 14px;
+  height: 14px;
 }
 
 @keyframes spin {

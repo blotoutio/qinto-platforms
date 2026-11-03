@@ -146,6 +146,21 @@ export function OnboardingScreen({ status, teamId, onDone, onCancel }: Props) {
     })
   }
 
+  const skipDns = () => {
+    if (domainId === null) {
+      return
+    }
+
+    void act(async () => {
+      try {
+        await api('/api/setup/onboarding', { method: 'PUT', body: { step: 'deploy', teamId, domainId, rootDomain } })
+        setStep('deploy')
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Could not skip the DNS step')
+      }
+    })
+  }
+
   const deploy = () => {
     if (domainId === null) {
       return
@@ -204,6 +219,7 @@ export function OnboardingScreen({ status, teamId, onDone, onCancel }: Props) {
           busy={busy}
           onCheck={checkDns}
           onReload={() => void loadDns()}
+          onSkip={skipDns}
         />
       ) : null}
 

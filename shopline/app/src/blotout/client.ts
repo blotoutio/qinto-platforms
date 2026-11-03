@@ -181,6 +181,24 @@ export const setSiteDelivery = (
   return blotoutApi<{ mode: DeliveryMode; live: boolean }>(config, token, path, { method: 'PUT', body: { mode } })
 }
 
+export type SiteOrigins = { originCheck: boolean; allowedOrigins: string[] }
+
+export const getSiteOrigins = (config: AppConfig, token: string, site: { teamId: string; domainId: string }): Promise<SiteOrigins> => {
+  return blotoutApi<SiteOrigins>(config, token, `/teams/${site.teamId}/domains/${site.domainId}/origins`)
+}
+
+/** Replaces the whole list, so the caller merges into what it read; Qinto redeploys the site on save. */
+export const updateSiteOrigins = (
+  config: AppConfig,
+  token: string,
+  site: { teamId: string; domainId: string },
+  allowedOrigins: string[]
+): Promise<SiteOrigins & { deployed: boolean }> => {
+  const path = `/teams/${site.teamId}/domains/${site.domainId}/origins`
+
+  return blotoutApi(config, token, path, { method: 'PATCH', body: { allowedOrigins } })
+}
+
 export const getSiteSnippet = (config: AppConfig, token: string, teamId: string, domainId: string): Promise<BlotoutSnippet> => {
   return blotoutApi<BlotoutSnippet>(config, token, `/teams/${teamId}/domains/${domainId}/snippet`)
 }

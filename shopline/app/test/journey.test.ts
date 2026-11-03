@@ -124,6 +124,19 @@ const blotoutStub = (request: Request, path: string): Response | null => {
   return responses[path]?.() ?? null
 }
 
+/** The site's allowed origins, which select and deploy append the storefront to. */
+const originsStub = async (request: Request, path: string): Promise<Response | null> => {
+  if (path !== `/teams/${TEAM}/domains/${DOMAIN}/origins`) {
+    return null
+  }
+
+  if (request.method === 'PATCH') {
+    allowedOrigins = (JSON.parse(await request.text()) as { allowedOrigins: string[] }).allowedOrigins
+  }
+
+  return jsonResponse({ originCheck: true, allowedOrigins, deployed: true })
+}
+
 /**
  * Stands in for both platforms.
  *
@@ -137,7 +150,7 @@ const stubUpstreams = (state: Upstream) => {
       return new Response('{"errors":"record not found"}', { status: 500 })
     }
 
-    const answer = (await shoplineStub(request, path, state)) ?? blotoutStub(request, path)
+    const answer = (await shoplineStub(request, path, state)) ?? (await originsStub(request, path)) ?? blotoutStub(request, path)
     if (answer === null) {
       throw new Error(`the journey called something it should not: ${request.method} ${request.url}`)
     }
@@ -147,6 +160,7 @@ const stubUpstreams = (state: Upstream) => {
 }
 
 let siteCreated = false
+let allowedOrigins: string[] = []
 
 const status = async (): Promise<StatusPayload> => (await callJson<StatusPayload>('/api/status')).body
 
@@ -181,6 +195,7 @@ describe('the whole merchant journey', () => {
   beforeEach(async () => {
     await resetDb(db)
     siteCreated = false
+    allowedOrigins = []
     upstream = { pixelPushes: [], fail: new Set() }
   })
 
@@ -218,6 +233,7 @@ describe('the whole merchant journey', () => {
       expect(selected.status).toBe(200)
       expect(selected.body.tracking.live).toBe(true)
       expect(upstream.pixelPushes).toEqual([{ destination: DELIVERY, enabled: 'true' }])
+      expect(allowedOrigins).toEqual([`https://${HANDLE}.myshopline.com`])
 
       // 6. Live, with SHOPLINE and the app agreeing.
       const ready = await status()

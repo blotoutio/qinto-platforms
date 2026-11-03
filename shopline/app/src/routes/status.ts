@@ -10,6 +10,8 @@ import type { OnboardingStep, PushFailureReason } from '../db/schema'
 import type { AppEnv } from '../http/context'
 import { requireSession } from '../http/middleware'
 import { trackingIsLive } from '../services/pixel'
+import type { OriginsStatus } from '../services/store-origins'
+import { readOriginsStatus, storeOrigins } from '../services/store-origins'
 
 export const status = new Hono<AppEnv>()
 
@@ -40,6 +42,10 @@ export type StatusPayload = {
     siteName: string | null
     deliveryHost: string
     usingDevelopmentUrl: boolean
+    /** The site's two hostnames, for the destination switch. `null` when the site could not be read. */
+    hosts: SiteHosts | null
+    /** Whether the storefront's origins may open the site's socket, read live; `null` when unread. */
+    origins: OriginsStatus | null
     /** Read live from Blotout, because a site can stop serving without us hearing about it. */
     deliveryLive: boolean
     /**
@@ -92,6 +98,8 @@ const screenFor = (input: { connected: boolean; hasSelection: boolean; onboardin
   return step !== undefined && step !== 'connect' && step !== 'choose' && step !== 'done' ? 'onboarding' : 'choose'
 }
 
+type SiteHosts = { domain: string; developmentUrl: string | null }
+
 type DnsState = { valid: boolean | null; message: string | null; records: BlotoutDnsRecord[] }
 
 export type SiteNotVisible = 'team_not_approved' | 'other_account'
@@ -101,12 +109,16 @@ type ConnectionResult = {
   deliveryLive: boolean
   dns: DnsState
   notVisible: SiteNotVisible | null
+  hosts: SiteHosts | null
+  origins: OriginsStatus | null
 }
 
 /** Blotout's answers for a site this grant cannot see. Anything else is not proof that it cannot. */
 const NOT_VISIBLE_STATUSES = new Set([403, 404])
 
 const DNS_UNKNOWN: DnsState = { valid: null, message: null, records: [] }
+
+const UNREAD = { hosts: null, origins: null }
 
 /**
  * Whether the selected site's own hostname points at Blotout yet.
@@ -148,6 +160,26 @@ const resolveDns = async (
   }
 }
 
+/** A read that fails leaves the answer unknown, so the card neither warns nor reassures. */
+const resolveOrigins = async (
+  config: AppConfig,
+  token: string,
+  site: { teamId: string; domainId: string; rootDomain: string },
+  wanted: string[]
+): Promise<OriginsStatus | null> => {
+  try {
+    return await readOriginsStatus(config, token, site, wanted)
+  } catch (error) {
+    if (!(error instanceof BlotoutApiError)) {
+      throw error
+    }
+
+    console.warn('site origins unreadable', { domainId: site.domainId, code: error.code })
+
+    return null
+  }
+}
+
 /**
  * The Blotout connection, and whether the selected site is actually serving.
  *
@@ -155,7 +187,11 @@ const resolveDns = async (
  * us. A site we cannot read is reported as not serving; anything that is not a Blotout API failure
  * propagates, because a transport failure means the app is broken and must not look healthy.
  */
-const resolveConnection = async (c: Context<AppEnv>, selection: Awaited<ReturnType<typeof findSelection>>): Promise<ConnectionResult> => {
+const resolveConnection = async (
+  c: Context<AppEnv>,
+  selection: Awaited<ReturnType<typeof findSelection>>,
+  wantedOrigins: string[]
+): Promise<ConnectionResult> => {
   const handle = c.get('handle')
   const config = c.get('config')
 
@@ -167,11 +203,11 @@ const resolveConnection = async (c: Context<AppEnv>, selection: Awaited<ReturnTy
     // with the config it has, and a reconnect lands back on the same site. The callback is where a
     // reconnect by an account that cannot see that site gets caught.
     if (error instanceof BlotoutGrantRevokedError) {
-      return { connection: { connected: false, reason: 'revoked' }, deliveryLive: false, dns: DNS_UNKNOWN, notVisible: null }
+      return { connection: { connected: false, reason: 'revoked' }, deliveryLive: false, dns: DNS_UNKNOWN, notVisible: null, ...UNREAD }
     }
 
     if (error instanceof BlotoutNotConnectedError) {
-      return { connection: { connected: false, reason: 'never' }, deliveryLive: false, dns: DNS_UNKNOWN, notVisible: null }
+      return { connection: { connected: false, reason: 'never' }, deliveryLive: false, dns: DNS_UNKNOWN, notVisible: null, ...UNREAD }
     }
 
     throw error
@@ -186,14 +222,19 @@ const resolveConnection = async (c: Context<AppEnv>, selection: Awaited<ReturnTy
   }
 
   if (selection === undefined) {
-    return { connection, deliveryLive: false, dns: DNS_UNKNOWN, notVisible: null }
+    return { connection, deliveryLive: false, dns: DNS_UNKNOWN, notVisible: null, ...UNREAD }
   }
 
   try {
     const site = await getSite(config, grant.accessToken, selection.teamId, selection.domainId)
-    const dns = await resolveDns(config, grant.accessToken, selection)
+    const originsSite = { teamId: selection.teamId, domainId: selection.domainId, rootDomain: site.rootDomain }
+    const [dns, origins] = await Promise.all([
+      resolveDns(config, grant.accessToken, selection),
+      resolveOrigins(config, grant.accessToken, originsSite, wantedOrigins)
+    ])
+    const hosts = { domain: site.domain, developmentUrl: site.developmentUrl }
 
-    return { connection, deliveryLive: site.deliveryLive, dns, notVisible: null }
+    return { connection, deliveryLive: site.deliveryLive, dns, notVisible: null, hosts, origins }
   } catch (error) {
     if (!(error instanceof BlotoutApiError)) {
       throw error
@@ -202,12 +243,12 @@ const resolveConnection = async (c: Context<AppEnv>, selection: Awaited<ReturnTy
     console.warn('selected site unreadable', { handle, code: error.code })
 
     if (!NOT_VISIBLE_STATUSES.has(error.status)) {
-      return { connection, deliveryLive: false, dns: DNS_UNKNOWN, notVisible: null }
+      return { connection, deliveryLive: false, dns: DNS_UNKNOWN, notVisible: null, ...UNREAD }
     }
 
     const sameUser = selection.qintoUserId !== null && selection.qintoUserId === grant.userId
 
-    return { connection, deliveryLive: false, dns: DNS_UNKNOWN, notVisible: sameUser ? 'team_not_approved' : 'other_account' }
+    return { connection, deliveryLive: false, dns: DNS_UNKNOWN, notVisible: sameUser ? 'team_not_approved' : 'other_account', ...UNREAD }
   }
 }
 
@@ -233,7 +274,8 @@ status.get('/api/status', requireSession, async (c) => {
   // here: this is the endpoint the SPA polls, so a retry would put a SHOPLINE round trip on every
   // request. A failed install-time fetch leaves them null until the next install.
   const primaryDomain = store?.primaryDomain ?? null
-  const { connection, deliveryLive, dns, notVisible } = await resolveConnection(c, selection)
+  const wanted = storeOrigins(handle, config.apiHost, primaryDomain)
+  const { connection, deliveryLive, dns, notVisible, hosts, origins } = await resolveConnection(c, selection, wanted)
 
   const payload: StatusPayload = {
     screen: screenFor({
@@ -260,6 +302,8 @@ status.get('/api/status', requireSession, async (c) => {
             siteName: selection.siteName,
             deliveryHost: selection.deliveryHost,
             usingDevelopmentUrl: selection.usingDevelopmentUrl,
+            hosts,
+            origins,
             deliveryLive,
             dnsValid: dns.valid,
             dnsMessage: dns.message,

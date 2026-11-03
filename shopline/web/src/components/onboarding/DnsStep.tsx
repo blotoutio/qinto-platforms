@@ -10,10 +10,11 @@ type Props = {
   busy: boolean
   onCheck: () => void
   onReload: () => void
+  onSkip: () => void
 }
 
 /** Step two: the records the merchant publishes at their DNS provider, and whether they are live. */
-export function DnsStep({ dns, teamId, domainId, host, busy, onCheck, onReload }: Props) {
+export function DnsStep({ dns, teamId, domainId, host, busy, onCheck, onReload, onSkip }: Props) {
   // Qinto refuses to share a site that needs no records, so the form only appears where it works.
   const shareable = domainId !== null && dns?.required === true && !dns.valid && dns.records.length > 0
 
@@ -40,7 +41,8 @@ export function DnsStep({ dns, teamId, domainId, host, busy, onCheck, onReload }
 
       <p className='subtle'>
         Add these at your DNS provider, then check. Propagation is usually minutes but can take hours — you can close this app and come
-        back; it remembers where you were.
+        back; it remembers where you were. Or skip for now and deploy, then switch between the Qinto URL and your own domain at any time
+        from the Connected site card.
       </p>
 
       <div className='row'>
@@ -49,6 +51,9 @@ export function DnsStep({ dns, teamId, domainId, host, busy, onCheck, onReload }
         </button>
         <button type='button' className='btn-secondary' onClick={onReload} disabled={busy}>
           Reload records
+        </button>
+        <button type='button' className='btn-secondary' onClick={onSkip} disabled={busy}>
+          Skip for now
         </button>
       </div>
 

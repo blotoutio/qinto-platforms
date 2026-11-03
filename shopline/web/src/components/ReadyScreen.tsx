@@ -2,7 +2,7 @@ import { useState } from 'react'
 
 import { api } from '../lib/api'
 import { confirmAction, toast } from '../lib/app-bridge'
-import type { PushFailureReason, Status } from '../lib/types'
+import type { OriginsStatus, PushFailureReason, Status } from '../lib/types'
 import { AppEmbedNote } from './AppEmbedNote'
 import { AccountCard } from './ready/AccountCard'
 import { DnsCard } from './ready/DnsCard'
@@ -30,6 +30,7 @@ const refusalMessage = (result: PushResponse): string => pushFailure(result.reas
  */
 export function ReadyScreen({ status, onChanged }: Props) {
   const [busy, setBusy] = useState(false)
+  const [switchingToQintoUrl, setSwitchingToQintoUrl] = useState<boolean | null>(null)
   const { selection, connection, tracking } = status
 
   // The merchant asked for one state and SHOPLINE last accepted the other.
@@ -88,6 +89,35 @@ export function ReadyScreen({ status, onChanged }: Props) {
       toast.error(refusalMessage(result))
     })
 
+  const useQintoUrl = (next: boolean) => {
+    setSwitchingToQintoUrl(next)
+    void act(async () => {
+      const result = await api<{ deliveryHost: string; pushed: boolean; error?: string }>('/api/setup/destination', {
+        method: 'PUT',
+        body: { target: next ? 'development_url' : 'domain' }
+      })
+      if (result.pushed) {
+        toast.success(`Events now go to ${result.deliveryHost} from each visitor’s next page load.`)
+
+        return
+      }
+
+      toast.error(result.error ?? 'SHOPLINE did not accept the new destination')
+    }).finally(() => setSwitchingToQintoUrl(null))
+  }
+
+  const retryOrigins = () =>
+    void act(async () => {
+      const { origins } = await api<{ origins: OriginsStatus }>('/api/setup/origins', { method: 'POST' })
+      if (origins.state === 'full') {
+        toast.error('The site already allows 20 origins. Remove one in Qinto first.')
+
+        return
+      }
+
+      toast.success('Your storefront is in the site’s allowed origins')
+    })
+
   const changeSite = () =>
     confirmAction({
       title: 'Choose a different site?',
@@ -125,7 +155,16 @@ export function ReadyScreen({ status, onChanged }: Props) {
 
       {selection === null || selection.dnsValid !== false ? null : <DnsCard selection={selection} />}
 
-      {selection === null ? null : <SiteCard selection={selection} busy={busy} onChangeSite={changeSite} />}
+      {selection === null ? null : (
+        <SiteCard
+          selection={selection}
+          busy={busy}
+          onChangeSite={changeSite}
+          onUseQintoUrl={useQintoUrl}
+          switchingToQintoUrl={switchingToQintoUrl}
+          onRetryOrigins={retryOrigins}
+        />
+      )}
 
       <AccountCard connection={connection} busy={busy} onDisconnect={disconnect} />
 

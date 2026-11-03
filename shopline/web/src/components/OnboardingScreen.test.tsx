@@ -183,6 +183,29 @@ describe('the DNS step', () => {
     expect(screen.queryByLabelText('Email addresses')).toBeNull()
   })
 
+  it('lets the merchant skip DNS and remembers they did', async () => {
+    atDns(() => ({ body: DNS }))
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Skip for now' }))
+
+    expect(await screen.findByText('Deploy the site')).toBeTruthy()
+    expect(http.calls.find((call) => call.path === '/api/setup/onboarding')).toMatchObject({
+      method: 'PUT',
+      body: { step: 'deploy', teamId: 'team-1', domainId: 'domain-9', rootDomain: 'shop.example.com' }
+    })
+  })
+
+  it('stays on DNS when the skip cannot be saved', async () => {
+    atDns(({ path }) => (path === '/api/setup/onboarding' ? { status: 500, body: { error: 'boom' } } : { body: DNS }))
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Skip for now' }))
+
+    await waitFor(() => {
+      expect(hostCalls.toasts.some((toast) => toast.level === 'error')).toBe(true)
+    })
+    expect(screen.getByText('Publish these DNS records')).toBeTruthy()
+  })
+
   it('advances to deploy once the check passes', async () => {
     atDns(({ path }) => ({ body: path === '/api/setup/dns/check' ? { ...DNS, valid: true, message: '' } : DNS }))
 

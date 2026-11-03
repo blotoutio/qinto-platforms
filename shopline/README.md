@@ -27,10 +27,10 @@ to the browser, and the SPA must never hold one.
 ```bash
 pnpm install
 cp app/.dev.vars.example app/.dev.vars     # then fill it in — see the comments in the file
-cp shopline.app.production.toml shopline.app.dev.toml
+cp shopline.app.production.toml shopline.app.toml
 pnpm --filter app db:migrate:local
 pnpm --filter web build                    # the Worker serves web/dist as its assets
-pnpm dev                                   # `shopline app dev -c dev`: tunnel + install on the dev store
+pnpm dev                                   # `shopline app dev`: tunnel + install on the dev store
 ```
 
 To run the Worker alone, without the SHOPLINE tunnel:
@@ -49,10 +49,12 @@ There are three SHOPLINE apps, one per config, and the CLI picks a config with `
   `shopline app config push -c production`.
 - **`shopline.app.sandbox.toml`**: the *[Sandbox] Blotout* app behind `shopline-sandbox.qinto.tech`,
   committed. Push a change to it with `shopline app config push -c sandbox`.
-- **`shopline.app.dev.toml`**: the dev app, local, gitignored. Never point a deployed Worker at it.
+- **`shopline.app.toml`**: the dev app, local, gitignored. Never point a deployed Worker at it.
   `pnpm dev`, `pnpm dev:reset`, `pnpm config:use` and `pnpm config:push` use it, and
-  `shopline app dev` rewrites its URLs with each run's tunnel, so the committed files never change. `shopline app build` has no `-c` flag and uses whichever config
-  the CLI last saved for this directory. Run `pnpm config:use` once so that default is `dev`.
+  `shopline app dev` rewrites its URLs with each run's tunnel, so the committed files never change.
+  It is the default name rather than `shopline.app.dev.toml` because CLI 2.1.5's `app dev` ignores
+  `-c` when it loads the config. `shopline app build` has no `-c` flag and uses whichever config the
+  CLI last saved for this directory. Run `pnpm config:use` once so that default is this file.
 
 ## Releasing
 

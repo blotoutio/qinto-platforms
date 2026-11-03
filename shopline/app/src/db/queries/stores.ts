@@ -66,6 +66,14 @@ export const saveSelection = async (db: Db, handle: string, input: SelectionInpu
     .onConflictDoUpdate({ target: siteSelections.handle, set: { ...row, handle: undefined } })
 }
 
+export const updateDestination = async (
+  db: Db,
+  handle: string,
+  destination: Pick<SelectionInput, 'deliveryHost' | 'usingDevelopmentUrl'>
+): Promise<void> => {
+  await db.update(siteSelections).set(destination).where(eq(siteSelections.handle, handle))
+}
+
 export const clearSelection = async (db: Db, handle: string): Promise<void> => {
   await db.delete(siteSelections).where(eq(siteSelections.handle, handle))
 }

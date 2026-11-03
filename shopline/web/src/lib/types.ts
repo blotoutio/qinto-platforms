@@ -13,6 +13,8 @@ export type AppScreen = 'connect' | 'choose' | 'onboarding' | 'ready'
 
 export type PushFailureReason = 'extension_not_published' | 'forbidden' | 'no_selection' | 'unknown'
 
+export type OriginsStatus = { state: 'allowed' | 'missing' | 'full' | 'check_off'; missing: string[] }
+
 export type OnboardingStep = 'connect' | 'choose' | 'site' | 'dns' | 'deploy' | 'done'
 
 export type Status = {
@@ -33,6 +35,10 @@ export type Status = {
     siteName: string | null
     deliveryHost: string
     usingDevelopmentUrl: boolean
+    /** The site's own domain and its Qinto URL. `null` when the site could not be read. */
+    hosts: { domain: string; developmentUrl: string | null } | null
+    /** Whether the storefront may open the site's socket, read live. `null` when unread. */
+    origins: OriginsStatus | null
     deliveryLive: boolean
     /** Whether the site's own hostname resolves to Qinto. `null` for a development URL or an unread check. */
     dnsValid: boolean | null

@@ -4,7 +4,7 @@ dist/
 .env.*
 !.env.*.example
 .dev.vars
-shopline.app.dev.toml
+shopline.app.toml
 .DS_Store
 logs
 *.log

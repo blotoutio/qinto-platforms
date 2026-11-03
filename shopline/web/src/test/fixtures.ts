@@ -28,6 +28,8 @@ export const readyStatus = (overrides: Partial<Status> = {}): Status => ({
     siteName: 'srini-shopline.com',
     deliveryHost: 'q.srini-shopline.com',
     usingDevelopmentUrl: false,
+    hosts: { domain: 'q.srini-shopline.com', developmentUrl: 'qsrini-shoplinecom-1.dev.qinto.tech' },
+    origins: { state: 'allowed', missing: [] },
     deliveryLive: true,
     dnsValid: true,
     dnsMessage: null,

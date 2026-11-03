@@ -1,3 +1,4 @@
+import type { Context } from 'hono'
 import { Hono } from 'hono'
 
 import type { BlotoutSite } from '../blotout/client'
@@ -14,10 +15,20 @@ import {
 } from '../blotout/client'
 import { loadConnection } from '../blotout/connection-store'
 import { isBlotoutId, isUuid } from '../config'
-import { clearOnboarding, saveOnboarding, saveSelection } from '../db/queries/stores'
+import {
+  clearOnboarding,
+  findPixelState,
+  findSelection,
+  findStore,
+  saveOnboarding,
+  saveSelection,
+  updateDestination
+} from '../db/queries/stores'
 import type { AppEnv } from '../http/context'
 import { requireSession } from '../http/middleware'
-import { setTrackingEnabled } from '../services/pixel'
+import { pushSettings, setTrackingEnabled } from '../services/pixel'
+import type { OriginsStatus } from '../services/store-origins'
+import { ensureStoreOrigins, storeOrigins } from '../services/store-origins'
 
 export const setup = new Hono<AppEnv>()
 
@@ -56,6 +67,30 @@ const resolveDeliveryHost = async (
     }
 
     return { host, usingDevelopmentUrl }
+  }
+}
+
+const wantedOrigins = async (c: Context<AppEnv>): Promise<string[]> => {
+  const store = await findStore(c.get('db'), c.get('handle'))
+
+  return storeOrigins(c.get('handle'), c.get('config').apiHost, store?.primaryDomain ?? null)
+}
+
+/**
+ * Lets the storefront's pages open the site's socket.
+ *
+ * Never fails the select or deploy it rides on: the site is chosen either way, and the Site card
+ * reads the list live and offers a retry. `null` means the list could not be read or written.
+ */
+const allowStoreOrigins = async (c: Context<AppEnv>, token: string, teamId: string, site: BlotoutSite): Promise<OriginsStatus | null> => {
+  try {
+    const wanted = await wantedOrigins(c)
+
+    return await ensureStoreOrigins(c.get('config'), token, { teamId, domainId: site.domainId, rootDomain: site.rootDomain }, wanted)
+  } catch (error) {
+    console.warn('store origins not allowed', { handle: c.get('handle'), error })
+
+    return null
   }
 }
 
@@ -98,9 +133,11 @@ setup.post('/api/setup/select', requireSession, async (c) => {
   // `false` — which is what a previous disconnect or revocation leaves behind — made the app
   // disagree with itself, and the two flags exist to surface SHOPLINE's disagreements, not ours.
   const push = await setTrackingEnabled(db, config, { handle, enabled: true, actor: c.get('staffSubject') })
+  const origins = await allowStoreOrigins(c, grant.accessToken, teamId, site)
 
   return c.json({
     selected: true,
+    origins,
     deliveryHost: delivery.host,
     deliveryLive: site.deliveryLive,
     tracking: { live: site.deliveryLive && push.pushed, ...(push.pushed ? {} : { error: push.error }) }
@@ -270,9 +307,11 @@ setup.post('/api/setup/deploy', requireSession, async (c) => {
   await clearOnboarding(db, handle)
 
   const push = await setTrackingEnabled(db, config, { handle, enabled: true, actor: c.get('staffSubject') })
+  const origins = await allowStoreOrigins(c, grant.accessToken, ref.teamId, site)
 
   return c.json({
     deployment,
+    origins,
     deliveryHost: delivery.host,
     deliveryLive: site.deliveryLive,
     tracking: { live: site.deliveryLive && push.pushed, ...(push.pushed ? {} : { error: push.error }) }
@@ -297,4 +336,60 @@ setup.put('/api/setup/onboarding', requireSession, async (c) => {
   })
 
   return c.json({ step })
+})
+
+/** The Site card's retry after an automatic add failed. */
+setup.post('/api/setup/origins', requireSession, async (c) => {
+  const config = c.get('config')
+  const db = c.get('db')
+  const handle = c.get('handle')
+  const selection = await findSelection(db, handle)
+  if (selection === undefined) {
+    return c.json({ error: 'no site is selected' }, 409)
+  }
+
+  const grant = await loadConnection(db, config, handle)
+  const site = await getSite(config, grant.accessToken, selection.teamId, selection.domainId)
+  const ref = { teamId: selection.teamId, domainId: selection.domainId, rootDomain: site.rootDomain }
+
+  return c.json({ origins: await ensureStoreOrigins(config, grant.accessToken, ref, await wantedOrigins(c)) })
+})
+
+type DestinationBody = { target?: unknown }
+
+/**
+ * Points the pixel at the site's own domain or at its Qinto URL.
+ *
+ * Only our pixel setting changes; the site's Qinto delivery mode is left alone. On Qinto's managed
+ * hosts one worker answers both hostnames whatever that mode is, and the mode itself cannot go back
+ * to the Qinto URL once a site is deployed. Moving to a domain whose DNS is not verified yet is
+ * allowed on purpose — the Site card warns and shows the records.
+ */
+setup.put('/api/setup/destination', requireSession, async (c) => {
+  const { target } = await c.req.json<DestinationBody>()
+  if (target !== 'domain' && target !== 'development_url') {
+    return c.json({ error: 'target must be domain or development_url' }, 400)
+  }
+
+  const config = c.get('config')
+  const db = c.get('db')
+  const handle = c.get('handle')
+  const selection = await findSelection(db, handle)
+  if (selection === undefined) {
+    return c.json({ error: 'no site is selected' }, 409)
+  }
+
+  const grant = await loadConnection(db, config, handle)
+  const site = await getSite(config, grant.accessToken, selection.teamId, selection.domainId)
+  const usingDevelopmentUrl = target === 'development_url'
+  const host = usingDevelopmentUrl ? site.developmentUrl : site.domain
+  if (host === null) {
+    return c.json({ error: 'This site has no Qinto URL' }, 409)
+  }
+
+  await updateDestination(db, handle, { deliveryHost: host, usingDevelopmentUrl })
+  const pixel = await findPixelState(db, handle)
+  const push = await pushSettings(db, config, handle, pixel?.trackingEnabled ?? true)
+
+  return c.json({ deliveryHost: host, usingDevelopmentUrl, pushed: push.pushed, ...(push.pushed ? {} : { error: push.error }) })
 })
