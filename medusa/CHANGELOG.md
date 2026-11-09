@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.4
+
+- `AddShippingInfo` no longer fires when a storefront pre-selects a default shipping option. It
+  fires inside checkout once the cart has both a delivery address and a shipping option, and again
+  when the shopper switches option.
+- `AddPaymentInfo` no longer fires when a checkout creates its payment session on load. It fires
+  inside checkout when the shopper clicks a payment option or clicks into a provider's card form,
+  and again when they switch.
+- `InitiateCheckout` is always sent before either of them.
+- The cart read no longer asks Medusa for payment sessions.
+
 ## 0.1.0
 
 First release.

@@ -34,7 +34,8 @@ test("field lists replace Medusa's defaults rather than adding to them", () => {
     assert.ok(list.split(",").some((f) => !/^[+\-* ]/.test(f)), list)
   }
 
-  assert.doesNotMatch(c.CART_FIELDS, /payment_sessions\.data|billing_address|metadata/)
+  assert.doesNotMatch(c.CART_FIELDS, /payment_sessions|payment_collection|billing_address|metadata/)
+  assert.match(c.CART_FIELDS, /shipping_methods\.shipping_option_id/)
   assert.match(c.productFields(true), /calculated_price/)
   assert.doesNotMatch(c.productFields(false), /calculated_price/)
 })
@@ -50,7 +51,7 @@ test("projectCart drops payment session data and unread fields", () => {
     items: [
       { id: "li_1", quantity: 2, unit_price: 10, product_id: "prod_1", variant_sku: "SKU", metadata: {} },
     ],
-    shipping_methods: [{ id: "sm_1", data: { x: 1 } }],
+    shipping_methods: [{ id: "sm_1", shipping_option_id: "so_1", data: { x: 1 } }],
     payment_collection: {
       id: "pc_1",
       payment_sessions: [{ id: "ps_1", data: { client_secret: "pi_secret" } }],
@@ -66,8 +67,7 @@ test("projectCart drops payment session data and unread fields", () => {
     items: [
       { id: "li_1", quantity: 2, unit_price: 10, product_id: "prod_1", variant: { sku: "SKU" } },
     ],
-    shipping_methods: [{ id: "sm_1" }],
-    payment_collection: { payment_sessions: [{ id: "ps_1" }] },
+    shipping_methods: [{ shipping_option_id: "so_1" }],
     shipping_address: { first_name: "A", city: "Ljubljana" },
   })
   assert.doesNotMatch(JSON.stringify(cart), /secret/)

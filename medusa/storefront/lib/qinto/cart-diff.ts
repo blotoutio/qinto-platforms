@@ -1,5 +1,5 @@
 import { HttpTypes } from "@medusajs/types"
-import { cartEvent, compact, toContent, type Properties } from "./mapping"
+import { compact, toContent, type Properties } from "./mapping"
 
 /**
  * Turning two cart states into the events that must have happened between them.
@@ -30,12 +30,10 @@ export type Snapshot = {
   cartId: string | null
   currency?: string
   lines: Line[]
-  shipping: number
-  payment: number
 }
 
 /** What to store when the shopper has no cart yet. See `diffEvents` for why this is not just `null`. */
-export const NO_CART: Snapshot = { cartId: null, lines: [], shipping: 0, payment: 0 }
+export const NO_CART: Snapshot = { cartId: null, lines: [] }
 
 export type DerivedEvent = { name: string; properties: Properties }
 
@@ -48,8 +46,6 @@ export const snapshotOf = (cart: HttpTypes.StoreCart): Snapshot => ({
     unitPrice: item.unit_price ?? 0,
     content: toContent(item),
   })),
-  shipping: (cart.shipping_methods ?? []).length,
-  payment: (cart.payment_collection?.payment_sessions ?? []).length,
 })
 
 /**
@@ -113,13 +109,26 @@ export const diffEvents = (
     })
   }
 
-  if (next.shipping > previous.shipping) {
-    events.push({ name: "AddShippingInfo", properties: cartEvent(cart) })
-  }
-
-  if (next.payment > previous.payment) {
-    events.push({ name: "AddPaymentInfo", properties: cartEvent(cart) })
-  }
-
   return events
+}
+
+/** The shipping and payment choices already reported for a cart; `""` means none yet. */
+export type CheckoutState = { cartId: string | null; shipping: string; payment: string }
+
+/** The shipping option to report: empty until the cart has both an option and a street address. */
+export const shippingChoice = (cart: HttpTypes.StoreCart): string =>
+  cart.shipping_address?.address_1?.trim()
+    ? (cart.shipping_methods ?? []).map((method) => method.shipping_option_id).sort().join(",")
+    : ""
+
+/** The state after reporting `choice`, or `null` when it is empty or already reported for this cart. */
+export const reportChoice = (
+  cart: HttpTypes.StoreCart,
+  previous: CheckoutState | null,
+  step: "shipping" | "payment",
+  choice: string
+): CheckoutState | null => {
+  const state = previous?.cartId === cart.id ? previous : { cartId: cart.id, shipping: "", payment: "" }
+
+  return choice === "" || choice === state[step] ? null : { ...state, [step]: choice }
 }

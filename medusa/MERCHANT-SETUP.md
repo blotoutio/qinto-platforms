@@ -106,8 +106,8 @@ Load a page, open a product, add it to the cart and go to checkout. You should s
 | `AddToCart` | A line is added or its quantity goes up |
 | `RemoveFromCart` | A line is removed or its quantity goes down |
 | `InitiateCheckout` | A shopper reaches checkout from another page, every time, but not when moving between steps inside checkout |
-| `AddShippingInfo` | A shipping method is chosen |
-| `AddPaymentInfo` | A payment method is chosen |
+| `AddShippingInfo` | Inside checkout, the cart has a delivery address and a shipping option. Again if the shopper switches option |
+| `AddPaymentInfo` | Inside checkout, the shopper clicks a payment option or clicks into the card form. Again if they switch |
 | `Purchase` | The order confirmation page renders |
 | `CompleteRegistration` | A new account is created |
 

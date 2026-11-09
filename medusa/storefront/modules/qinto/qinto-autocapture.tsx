@@ -15,7 +15,16 @@ import {
   viewContent,
   type Traits,
 } from "../../lib/qinto/mapping"
-import { NO_CART, diffEvents, snapshotOf, type Snapshot } from "../../lib/qinto/cart-diff"
+import {
+  NO_CART,
+  diffEvents,
+  reportChoice,
+  shippingChoice,
+  snapshotOf,
+  type CheckoutState,
+  type Snapshot,
+} from "../../lib/qinto/cart-diff"
+import { paymentOptionOfFrame, paymentOptionOfLabel } from "../../lib/qinto/payment-option"
 import { traitsFrom } from "../../lib/qinto/form-traits"
 import {
   isCheckoutPath,
@@ -77,6 +86,33 @@ const CART_KEY = "qinto_cart_v1"
  */
 const ON_CHECKOUT_KEY = "qinto_on_checkout_v1"
 
+/** The shipping and payment choices already reported for the current cart. */
+const CHECKOUT_KEY = "qinto_checkout_v1"
+
+const PAYMENT_CONTROLS = '[role="tab"], [role="radio"], input[type="radio"], button'
+
+const onCheckoutNow = (routes: RouteConfig | undefined): boolean => {
+  const pathname = window.location.pathname
+  const { rest } = splitCountry(pathname.split("/").filter(Boolean), routes?.countryPrefix)
+
+  return isCheckoutPath(routes, rest, pathname)
+}
+
+/** The visible name of a payment control. */
+const labelOf = (control: Element): string | null => {
+  if (control instanceof HTMLInputElement) {
+    return control.labels?.[0]?.textContent ?? null
+  }
+
+  const named = document.getElementById(control.getAttribute("aria-labelledby") ?? "")
+
+  return control.getAttribute("aria-label") ?? named?.textContent ?? control.textContent
+}
+
+/** Whether a person acted in the last few seconds; `true` where the browser cannot say. */
+const shopperActed = (): boolean =>
+  (navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation?.isActive ?? true
+
 const readStore = <T,>(key: string, fallback: T): T => {
   try {
     const raw = sessionStorage.getItem(key)
@@ -133,6 +169,31 @@ const Capture = ({ routes }: { routes?: RouteConfig }) => {
   const searchParams = useSearchParams()
   const lastPageView = useRef<string | null>(null)
   const busy = useRef(false)
+
+  // Read through a ref so the listeners registered once below always see the current routes.
+  const routesRef = useRef(routes)
+  routesRef.current = routes
+
+  /** Sends a checkout step's event once per choice, and only while the shopper is in the checkout. */
+  const reportStep = (
+    cart: HttpTypes.StoreCart | null,
+    step: "shipping" | "payment",
+    choice: string,
+    event: string
+  ): void => {
+    if (cart === null || (cart.items ?? []).length === 0 || !onCheckoutNow(routesRef.current)) {
+      return
+    }
+
+    const next = reportChoice(cart, readStore<CheckoutState | null>(CHECKOUT_KEY, null), step, choice)
+    if (next !== null) {
+      writeStore(CHECKOUT_KEY, next)
+      track(event, cartEvent(cart))
+    }
+  }
+
+  const reportShipping = (cart: HttpTypes.StoreCart | null): void =>
+    reportStep(cart, "shipping", cart === null ? "" : shippingChoice(cart), "AddShippingInfo")
 
   /** Re-reads the cart and emits whatever changed. Serialised: overlapping reads double-count. */
   const syncCart = async (): Promise<HttpTypes.StoreCart | null> => {
@@ -263,6 +324,8 @@ const Capture = ({ routes }: { routes?: RouteConfig }) => {
         identify(cartTraits(cart))
         track("InitiateCheckout", cartEvent(cart))
       }
+
+      reportShipping(cart)
     })()
   }, [pathname, searchParams, routes])
 
@@ -355,6 +418,43 @@ const Capture = ({ routes }: { routes?: RouteConfig }) => {
     return () => document.removeEventListener("submit", onSubmit, true)
   }, [])
 
+  /** AddPaymentInfo: a real click on a payment option, or focus moving into a provider's card form. */
+  useEffect(() => {
+    const report = async (option: string | null): Promise<void> => {
+      if (option === null || !onCheckoutNow(routesRef.current)) {
+        return
+      }
+
+      const body = await context<{ cart: HttpTypes.StoreCart | null }>("kind=cart")
+      reportStep(body?.cart ?? null, "payment", option, "AddPaymentInfo")
+    }
+
+    const onClick = (event: Event) => {
+      const control =
+        event.isTrusted && event.target instanceof Element ? event.target.closest(PAYMENT_CONTROLS) : null
+      if (control !== null) {
+        void report(paymentOptionOfLabel(labelOf(control)))
+      }
+    }
+
+    // Deferred: `activeElement` only points at the frame once the blur has finished.
+    const onBlur = () =>
+      setTimeout(() => {
+        const frame = document.activeElement
+        if (frame instanceof HTMLIFrameElement && shopperActed()) {
+          void report(paymentOptionOfFrame(frame.src, frame.name))
+        }
+      }, 0)
+
+    document.addEventListener("click", onClick, true)
+    window.addEventListener("blur", onBlur)
+
+    return () => {
+      document.removeEventListener("click", onClick, true)
+      window.removeEventListener("blur", onBlur)
+    }
+  }, [])
+
   /**
    * Detects a completed Server Action, and re-reads the cart.
    *
@@ -377,7 +477,7 @@ const Capture = ({ routes }: { routes?: RouteConfig }) => {
       }
       // Coalesced: one interaction can fire several actions, and the cart is only settled after
       // the last of them.
-      timer = setTimeout(() => void syncCart(), 250)
+      timer = setTimeout(() => void syncCart().then(reportShipping), 250)
     }
 
     let observer: PerformanceObserver | null = null

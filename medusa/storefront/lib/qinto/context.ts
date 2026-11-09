@@ -45,10 +45,8 @@ export const CART_FIELDS = fields([
   "email",
   "total",
   ...ITEM_FIELDS.map((f) => `items.${f}`),
-  // Counted, never read: a new shipping method or payment session is what AddShippingInfo and
-  // AddPaymentInfo are derived from. The session's `data` is the one field that must never leave.
-  "shipping_methods.id",
-  "payment_collection.payment_sessions.id",
+  // AddShippingInfo is keyed on the selected option. Payment sessions are never asked for.
+  "shipping_methods.shipping_option_id",
   ...ADDRESS_FIELDS.map((f) => `shipping_address.${f}`),
 ])
 
@@ -130,24 +128,16 @@ const projectItem = (item: Json): Json => {
   return out
 }
 
-const idsOnly = (value: unknown): Json[] => asArray(value).map((entry) => ({ id: entry.id }))
-
 export const projectCart = (input: unknown): Json | null => {
   const cart = asObject(input)
   if (cart === null) {
     return null
   }
 
-  const paymentCollection = asObject(cart.payment_collection)
-
   return {
     ...pick(cart, ["id", "currency_code", "email", "total"]),
     items: asArray(cart.items).map(projectItem),
-    shipping_methods: idsOnly(cart.shipping_methods),
-    payment_collection:
-      paymentCollection === null
-        ? null
-        : { payment_sessions: idsOnly(paymentCollection.payment_sessions) },
+    shipping_methods: asArray(cart.shipping_methods).map((m) => pick(m, ["shipping_option_id"])),
     shipping_address: pick(asObject(cart.shipping_address), ADDRESS_FIELDS),
   }
 }
