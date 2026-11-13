@@ -37,8 +37,8 @@ catalogs:
       specifier: 0.28.2
       version: 0.28.2
     hono:
-      specifier: 4.13.7
-      version: 4.13.7
+      specifier: 4.13.16
+      version: 4.13.16
     react:
       specifier: 18.3.1
       version: 18.3.1
@@ -82,7 +82,7 @@ importers:
         version: 0.45.2(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)
       hono:
         specifier: 'catalog:'
-        version: 4.13.7
+        version: 4.13.16
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 'catalog:'
@@ -3372,8 +3372,8 @@ packages:
     resolution: {integrity: sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==}
     engines: {node: '>= 0.4'}
 
-  hono@4.13.7:
-    resolution: {integrity: sha512-c8/gF9ac8Y78/agExVocyLevgR+JlpNB444Py0FSX8pJoPdYUfUzRcXtYEYGwt6l19qIlVZPN5Mfsw9jFShmQQ==}
+  hono@4.13.16:
+    resolution: {integrity: sha512-AOLOEhvrV+iH92xXCnFr/5+3KjPKcI3xP63XJtX5spAnkznPdHijlIsUTpi7/9EhWqrTCekw5c5zh1K+YsVw7A==}
     engines: {node: '>=16.9.0'}
 
   html-escaper@2.0.2:
@@ -4231,6 +4231,7 @@ packages:
 
   node-abort-controller@3.1.1:
     resolution: {integrity: sha512-AGK2yQKIjRuqnc6VkX2Xj5d+QW8xZ87pa1UK6yA6ouUyuxfHuMP6umE5QK7UmTeOAymo+Zx1Fxiuw9rVx8taHQ==}
+    deprecated: This package is no longer needed on supported Node.js versions. Node.js 16+ includes AbortController and AbortSignal as built-in globals. All Node.js versions requiring this polyfill are end-of-life. Use the built-in globals instead.
 
   node-domexception@1.0.0:
     resolution: {integrity: sha512-/jKZoMpw0F8GRwl4/eLROPA3cfcXtLApP0QzLmUT/HuPCZWyB7IY9ZrMeKw2O/nFIqPQB3PVM9aYm0F312AXDQ==}
@@ -7147,7 +7148,7 @@ snapshots:
       magicast: 0.5.4
       obug: 2.1.4
       tinyrainbow: 3.1.1
-      vitest: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.4.1)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@1.21.7)(tsx@4.23.13)(yaml@2.9.0))
+      vitest: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@25.9.5)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(happy-dom@20.14.0)(vite@8.2.2(@types/node@25.9.5)(esbuild@0.28.2)(jiti@1.21.7)(tsx@4.23.13)(yaml@2.9.0))
     transitivePeerDependencies:
       - supports-color
 
@@ -7163,7 +7164,7 @@ snapshots:
       obug: 2.1.4
       std-env: 4.2.0
       tinyrainbow: 3.1.1
-      vitest: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.4.1)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@1.21.7)(tsx@4.23.13)(yaml@2.9.0))
+      vitest: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@25.9.5)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(happy-dom@20.14.0)(vite@8.2.2(@types/node@25.9.5)(esbuild@0.28.2)(jiti@1.21.7)(tsx@4.23.13)(yaml@2.9.0))
 
   '@vitest/expect@4.1.11':
     dependencies:
@@ -8902,7 +8903,7 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
-  hono@4.13.7: {}
+  hono@4.13.16: {}
 
   html-escaper@2.0.2: {}
 
