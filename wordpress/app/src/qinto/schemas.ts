@@ -34,8 +34,6 @@ export const dnsResponse = z.object({
 
 export const dnsShareResponse = z.object({ sent: z.number() })
 
-export const deployResponse = z.object({ deploymentId: z.string(), version: z.string() })
-
 export const snippetResponse = z.object({ host: z.string(), usingDevelopmentUrl: z.boolean() })
 
 export const originsResponse = z.object({ originCheck: z.boolean(), allowedOrigins: z.array(z.string()) })

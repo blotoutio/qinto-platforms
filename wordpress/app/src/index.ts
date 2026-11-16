@@ -8,10 +8,10 @@ import type { AppEnv } from './http/context'
 import { withContext } from './http/middleware'
 import { BadRequestError } from './http/validate'
 import { QintoApiError, QintoContractError } from './qinto/http'
+import { qintoDeployUrl } from './qinto/sites'
 import { callback } from './routes/callback'
 import { connect } from './routes/connect'
 import { createSiteRoute } from './routes/create-site'
-import { deploy } from './routes/deploy'
 import { destination } from './routes/destination'
 import { disconnect } from './routes/disconnect'
 import { dns } from './routes/dns'
@@ -22,6 +22,7 @@ import { sites } from './routes/sites'
 import { start } from './routes/start'
 import { status } from './routes/status'
 import { QintoGrantRevokedError, QintoNotConnectedError, QintoRefreshBusyError, QintoUnavailableError } from './services/connection-store'
+import { SiteNotDeployedError } from './services/provision'
 import { keepGrantsAlive, reapSilent, sweepExpired } from './services/scheduled'
 import { SiteLockedError } from './services/site-scope'
 
@@ -29,21 +30,7 @@ const app = new Hono<AppEnv>()
 
 app.use('*', withContext)
 
-const routes = [
-  register,
-  connect,
-  start,
-  callback,
-  sites,
-  createSiteRoute,
-  dns,
-  deploy,
-  selectSite,
-  destination,
-  status,
-  disconnect,
-  heartbeat
-]
+const routes = [register, connect, start, callback, sites, createSiteRoute, dns, selectSite, destination, status, disconnect, heartbeat]
 for (const route of routes) {
   app.route('/', route)
 }
@@ -68,6 +55,10 @@ app.onError((error, c) => {
 
   if (error instanceof SiteLockedError) {
     return c.json({ error: 'site_locked' }, 409)
+  }
+
+  if (error instanceof SiteNotDeployedError) {
+    return c.json({ error: 'not_deployed', deployUrl: qintoDeployUrl(c.get('config').qintoAuthorizeOrigin, error.ref) }, 409)
   }
 
   if (error instanceof QintoRefreshBusyError) {

@@ -74,24 +74,16 @@ final class AjaxControllerTest extends TestCase {
 		$this->assertSame( 'Shop', $settings['site_name'] );
 	}
 
-	public function test_select_site_deploys_a_never_deployed_site_first(): void {
+	public function test_select_site_never_deploys_a_never_deployed_site(): void {
 		$this->respond(
-			502,
+			409,
 			array(
-				'error' => 'qinto_api',
-				'code'  => 'not_deployed',
-			)
-		);
-		$this->respond( 200, array( 'deploymentId' => 'd' ) );
-		$this->respond(
-			200,
-			array(
-				'host'                => 'dev-1.qinto.tech',
-				'usingDevelopmentUrl' => true,
+				'error'     => 'not_deployed',
+				'deployUrl' => 'https://portal.qinto.tech/team/t/domain/d/settings/general',
 			)
 		);
 
-		$this->call(
+		$sent = $this->call(
 			'select_site',
 			array(
 				'teamId'   => self::TEAM,
@@ -99,8 +91,10 @@ final class AjaxControllerTest extends TestCase {
 			)
 		);
 
-		$this->assertSame( array( '/select-site', '/deploy', '/select-site' ), array_map( static fn ( $r ) => parse_url( $r['url'], PHP_URL_PATH ), $this->requests ) ); // phpcs:ignore
-		$this->assertSame( 1, ( new Options() )->all()['use_qinto_url'] );
+		$this->assertSame( 'not_deployed', $sent['data']['error'] );
+		$this->assertSame( 'https://portal.qinto.tech/team/t/domain/d/settings/general', $sent['data']['deployUrl'] );
+		$this->assertSame( array( '/select-site' ), array_map( static fn ( $r ) => parse_url( $r['url'], PHP_URL_PATH ), $this->requests ) ); // phpcs:ignore
+		$this->assertSame( '', ( new Options() )->all()['qinto_host'] );
 	}
 
 	public function test_errors_keep_the_brokers_slug_and_store_nothing(): void {
@@ -128,7 +122,7 @@ final class AjaxControllerTest extends TestCase {
 			502,
 			array(
 				'error' => 'qinto_api',
-				'code'  => 'no_payment_method',
+				'code'  => 'forbidden',
 			)
 		);
 
@@ -141,7 +135,7 @@ final class AjaxControllerTest extends TestCase {
 		);
 
 		$this->assertFalse( $sent['success'] );
-		$this->assertSame( 'no_payment_method', $sent['data']['code'] );
+		$this->assertSame( 'forbidden', $sent['data']['code'] );
 		$this->assertSame( 502, $sent['data']['status'] );
 		$this->assertSame( 200, $sent['status'] );
 	}

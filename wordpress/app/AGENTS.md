@@ -12,8 +12,7 @@ The one Qinto OAuth client for every WordPress install. Owns D1 and every Qinto 
 | `GET /oauth/callback` | one-time `state` | stores the grant, returns to the pinned URL |
 | `GET /sites` · `POST /sites` | signed | list teams and sites · create a managed site |
 | `GET /dns` · `POST /dns/check` · `POST /dns/share` | signed | DNS records, recheck, email them (3/min per install) |
-| `POST /deploy` | signed | deploy a site |
-| `POST /select-site` | signed | install `blotout-consent`, settings, allow the WP origin, store the host |
+| `POST /select-site` | signed | install `blotout-consent`, settings, allow the WP origin, store the host; `409 not_deployed` + `deployUrl` for a never-deployed site |
 | `PUT /destination` | signed | own domain or Qinto URL; only the printed host changes |
 | `GET /status` | signed | what the settings page shows |
 | `POST /disconnect` | signed | revoke the grant (refresh token), delete the install |
@@ -40,8 +39,15 @@ and `select-site` takes the WordPress origin from the stored `shopId`.
 
 ## An install is locked to its selected site
 
-Once `/select-site` succeeds, DNS, deploy, select and create act only on that site
+Once `/select-site` succeeds, DNS, select and create act only on that site
 (`services/site-scope.ts`, `409 site_locked`). Changing site is disconnect, then connect.
+
+## The broker never deploys
+
+Deploying is Qinto's, because it gates billing. The broker may create a site and change its
+settings, apps and origins (Qinto redeploys a deployed site on those itself), but never calls
+`/deploy`. A site still `pending` answers `409 not_deployed` with `deployUrl`, Qinto's deploy page for that site
+(`/team/{teamId}/domain/{domainId}/settings/general`, its Deployment card); the plugin links the merchant there.
 
 ## WordPress never gets a host that does not resolve
 

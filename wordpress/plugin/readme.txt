@@ -21,7 +21,7 @@ The WP Consent API plugin (https://wordpress.org/plugins/wp-consent-api/) must b
 
 Qinto (https://qinto.tech) is Blotout's hosting platform. It serves the consent banner from your own domain, or from a Qinto URL until your DNS is set up, and stores the banner's design and settings. The banner is designed and switched on in Qinto, not in WordPress.
 
-You need a Qinto account to use this plugin. You can create one for free while connecting. Choosing a site publishes it on Qinto, and Qinto may ask for a payment method on your team before it does. Qinto's pricing applies to that site; this plugin itself has no paid features.
+You need a Qinto account to use this plugin. You can create one for free while connecting. The plugin can create a Qinto site for you, but you deploy it in Qinto, where Qinto may ask for a payment method on your team. Qinto's pricing applies to that site; this plugin itself has no paid features.
 
 == Installation ==
 

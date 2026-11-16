@@ -96,7 +96,7 @@ describe('POST /sites', () => {
   })
 })
 
-describe('DNS and deploy', () => {
+describe('DNS', () => {
   const dnsBody = { records: [{ type: 'CNAME', name: 'q', value: 'edge.qinto.site' }], valid: false, required: true, message: 'pending' }
 
   it('reads, checks and shares the records', async () => {
@@ -119,10 +119,8 @@ describe('DNS and deploy', () => {
     expect((await signedJson(registration, '/dns/share', { method: 'POST', body: share })).status).toBe(400)
   })
 
-  it('deploys', async () => {
-    qinto({ [`POST ${SITE_PATH}/deploy`]: () => jsonResponse({ deploymentId: 'dep-1', version: '7' }) })
-
-    expect((await signedJson(registration, '/deploy', { method: 'POST', body: REF })).body).toEqual({ deploymentId: 'dep-1', version: '7' })
+  it("has no deploy route: deploying is Qinto's", async () => {
+    expect((await signedJson(registration, '/deploy', { method: 'POST', body: REF })).status).toBe(404)
   })
 })
 
@@ -135,7 +133,6 @@ describe('POST /select-site', () => {
       [`PATCH ${SITE_PATH}/settings`]: () => jsonResponse({ settings: {}, deployed: false }),
       [`GET ${SITE_PATH}/origins`]: () => jsonResponse({ originCheck: true, allowedOrigins: ['https://a.example.com'] }),
       [`PATCH ${SITE_PATH}/origins`]: () => jsonResponse({ originCheck: true, allowedOrigins: [], deployed: true }),
-      [`POST ${SITE_PATH}/deploy`]: () => jsonResponse({ deploymentId: 'dep-1', version: '1' }),
       [`GET ${SITE_PATH}/snippet`]: () => jsonResponse({ host: 'q.shop.example.com', usingDevelopmentUrl: false, snippet: '<script>' }),
       [`GET ${SITE_PATH}/dns`]: () => jsonResponse({ records: [], valid: true, required: true, message: 'ok' }),
       ...overrides
@@ -162,9 +159,18 @@ describe('POST /select-site', () => {
       allowedOrigins: ['https://a.example.com', 'https://shop.example.com']
     })
     expect(await findSelection(db, registration.id)).toMatchObject({ deliveryHost: 'q.shop.example.com', teamId: TEAM_ID })
-    const order = stub.calls.map((request) => `${request.method} ${new URL(request.url).pathname}`)
-    expect(order.indexOf(`POST ${SITE_PATH}/deploy`)).toBeGreaterThan(order.indexOf(`PATCH ${SITE_PATH}/origins`))
-    expect(order.indexOf(`POST ${SITE_PATH}/deploy`)).toBeLessThan(order.indexOf(`GET ${SITE_PATH}/snippet`))
+    expect(stub.calls.some((request) => new URL(request.url).pathname.endsWith('/deploy'))).toBe(false)
+  })
+
+  it('refuses a never-deployed site before changing anything on it', async () => {
+    const stub = provisioning({ [`GET ${SITE_PATH}`]: () => jsonResponse({ site: qintoSite({ status: 'pending' }) }) })
+
+    expect(await signedJson(registration, '/select-site', { method: 'POST', body: REF })).toEqual({
+      status: 409,
+      body: { error: 'not_deployed', deployUrl: `${env.QINTO_AUTHORIZE_ORIGIN}/team/${TEAM_ID}/domain/${DOMAIN_ID}/settings/general` }
+    })
+    expect(stub.calls).toHaveLength(1)
+    expect(await findSelection(db, registration.id)).toBeUndefined()
   })
 
   it('falls back to the Qinto URL while the custom domain’s DNS is not verified', async () => {
@@ -404,7 +410,6 @@ describe('once a site is selected', () => {
       signedJson(registration, `/dns?teamId=${OTHER.teamId}&domainId=${OTHER.domainId}`),
       signedJson(registration, '/dns/check', { method: 'POST', body: OTHER }),
       signedJson(registration, '/dns/share', { method: 'POST', body: share }),
-      signedJson(registration, '/deploy', { method: 'POST', body: OTHER }),
       signedJson(registration, '/select-site', { method: 'POST', body: OTHER }),
       signedJson(registration, '/sites', { method: 'POST', body: { teamId: TEAM_ID, rootDomain: 'new.example.com' } })
     ]
@@ -416,9 +421,9 @@ describe('once a site is selected', () => {
   })
 
   it('still acts on its own site', async () => {
-    qinto({ [`POST ${SITE_PATH}/deploy`]: () => jsonResponse({ deploymentId: 'dep-2', version: '8' }) })
+    qinto({ [`POST ${SITE_PATH}/dns/check`]: () => jsonResponse({ records: [], valid: true, required: true, message: 'ok' }) })
 
-    expect((await signedJson(registration, '/deploy', { method: 'POST', body: REF })).status).toBe(200)
+    expect((await signedJson(registration, '/dns/check', { method: 'POST', body: REF })).status).toBe(200)
   })
 })
 

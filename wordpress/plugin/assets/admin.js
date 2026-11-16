@@ -23,7 +23,9 @@
     if (json?.success) {
       return json.data
     }
-    throw new Error(json?.data?.code || json?.data?.error || 'unknown')
+    const error = new Error(json?.data?.code || json?.data?.error || 'unknown')
+    error.deployUrl = json?.data?.deployUrl || ''
+    throw error
   }
 
   const errorMessage = (error) => strings[`err_${error.message}`] || `${strings.err_unknown} (${error.message})`
@@ -201,7 +203,11 @@
       messages.replaceChildren(alert('success', strings.saved))
       reloadPage()
     } catch (error) {
-      messages.replaceChildren(alert('error', errorMessage(error), strings.useFailed))
+      // Deploying is Qinto's: a never-deployed site gets a link to its deploy page there.
+      const deploy =
+        error.deployUrl &&
+        el('a', { class: 'button', href: error.deployUrl, target: '_blank', rel: 'noopener', text: strings.deployInQinto })
+      messages.replaceChildren(alert('error', errorMessage(error), strings.useFailed), deploy)
     }
   }
 
@@ -341,7 +347,7 @@
         el('span', { class: 'bo-site-name' }, [
           site.name || site.domain,
           matchesThisSite(site) && badge('rest', strings.matchesSite),
-          site.status !== 'active' && badge('warning', strings.pending)
+          site.status !== 'active' && badge('warning', strings.notDeployed)
         ]),
         el('span', { class: 'bo-muted bo-break', text: site.domain })
       ])

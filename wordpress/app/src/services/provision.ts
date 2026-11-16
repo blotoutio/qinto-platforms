@@ -5,7 +5,7 @@ import { getDns } from '../qinto/dns'
 import type { QintoApi } from '../qinto/http'
 import { allowOrigin } from '../qinto/origins'
 import type { SiteRef } from '../qinto/sites'
-import { deploySite, getSite, getSnippetHost } from '../qinto/sites'
+import { getSite, getSnippetHost } from '../qinto/sites'
 
 /**
  * Makes a chosen site serve the banner to this WordPress site.
@@ -14,6 +14,17 @@ import { deploySite, getSite, getSnippetHost } from '../qinto/sites'
  * stored until all succeed, so WordPress never prints a host that does not serve the consent app yet.
  */
 type Site = Awaited<ReturnType<typeof getSite>>
+
+/** `onError` turns it into a 409. Deploying is Qinto's (it gates billing), so the merchant finishes it there. */
+export class SiteNotDeployedError extends Error {
+  readonly ref: SiteRef
+
+  constructor(ref: SiteRef) {
+    super('the site has never been deployed')
+    this.name = 'SiteNotDeployedError'
+    this.ref = ref
+  }
+}
 
 /**
  * The host WordPress should print. Qinto can name the custom domain before its DNS is verified, and a
@@ -32,12 +43,13 @@ const deliveryHostFor = async (api: QintoApi, ref: SiteRef, site: Site) => {
 export const provisionSite = async (db: Db, api: QintoApi, input: { registrationId: string; ref: SiteRef; wpOrigin: string }) => {
   const { ref } = input
   const site = await getSite(api, ref)
+  if (site.status === 'pending') {
+    throw new SiteNotDeployedError(ref)
+  }
   const install = await installConsentApp(api, ref)
   await applyConsentSettings(api, ref)
   await allowOrigin(api, { ...ref, rootDomain: site.rootDomain }, input.wpOrigin)
-  // Without a deploy the app is not in the bundle `q.js` serves.
-  await deploySite(api, ref)
-
+  // Qinto redeploys the site on these writes itself; we never call deploy.
   const delivery = await deliveryHostFor(api, ref, site)
 
   await saveSelection(db, input.registrationId, {

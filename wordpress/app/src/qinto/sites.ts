@@ -1,6 +1,6 @@
 import type { QintoApi } from './http'
 import type { QintoSite, QintoTeam } from './schemas'
-import { deployResponse, siteResponse, sitesResponse, snippetResponse, teamsResponse } from './schemas'
+import { siteResponse, sitesResponse, snippetResponse, teamsResponse } from './schemas'
 
 export type SiteRef = { teamId: string; domainId: string }
 
@@ -28,7 +28,9 @@ export const createSite = async (api: QintoApi, teamId: string, input: CreateSit
   return (await api.post(`/teams/${teamId}/domains`, siteResponse, body)).site
 }
 
-export const deploySite = (api: QintoApi, site: SiteRef) => api.post(`${sitePath(site)}/deploy`, deployResponse)
+/** The site's settings page in Qinto, whose Deployment card deploys it, where the merchant deploys (and pays); the broker never does. */
+export const qintoDeployUrl = (portalOrigin: string, site: SiteRef): string =>
+  `${portalOrigin}/team/${encodeURIComponent(site.teamId)}/domain/${encodeURIComponent(site.domainId)}/settings/general`
 
 /** The host Qinto actually serves on; differs from `site.domain` while on the Qinto URL. */
 export const getSnippetHost = (api: QintoApi, site: SiteRef) => api.get(`${sitePath(site)}/snippet`, snippetResponse)

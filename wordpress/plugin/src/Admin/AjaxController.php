@@ -114,18 +114,11 @@ final class AjaxController {
 		$this->relay( $this->broker->write( 'POST', '/dns/share', $body ) );
 	}
 
-	/** Picks the site. A site that was never deployed is deployed first, then picked again. */
+	/** Picks the site. A never-deployed site comes back `not_deployed`: the merchant deploys it in Qinto. */
 	public function select_site(): void {
 		$this->guard();
 		$ref      = $this->site_ref();
 		$response = $this->broker->write( 'POST', '/select-site', $ref );
-		if ( 502 === $response['status'] && 'not_deployed' === ( $response['body']['code'] ?? '' ) ) {
-			$deployed = $this->broker->write( 'POST', '/deploy', $ref );
-			if ( 200 !== $deployed['status'] ) {
-				$this->relay( $deployed );
-			}
-			$response = $this->broker->write( 'POST', '/select-site', $ref );
-		}
 
 		if ( 200 === $response['status'] && Options::is_host( $response['body']['host'] ?? null ) ) {
 			$site = is_array( $response['body']['site'] ?? null ) ? $response['body']['site'] : array();
@@ -195,9 +188,11 @@ final class AjaxController {
 		$status = $response['status'];
 		wp_send_json_error(
 			array(
-				'error'  => (string) ( $response['body']['error'] ?? 'unknown' ),
-				'code'   => (string) ( $response['body']['code'] ?? '' ),
-				'status' => $status,
+				'error'     => (string) ( $response['body']['error'] ?? 'unknown' ),
+				'code'      => (string) ( $response['body']['code'] ?? '' ),
+				'status'    => $status,
+				// Qinto's deploy page for a never-deployed site; https only, since the script links to it.
+				'deployUrl' => esc_url_raw( (string) ( $response['body']['deployUrl'] ?? '' ), array( 'https' ) ),
 			),
 			$status >= 400 && $status < 500 ? $status : 200
 		);
