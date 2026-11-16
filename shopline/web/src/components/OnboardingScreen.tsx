@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { ApiError, api } from '../lib/api'
 import { toast } from '../lib/app-bridge'
+import { qintoDeployUrl } from '../lib/qinto'
 import type { DomainSuggestion, OnboardingStep, Site, SiteDns, Status } from '../lib/types'
 import { DeployStep } from './onboarding/DeployStep'
 import { DnsStep } from './onboarding/DnsStep'
@@ -29,7 +30,7 @@ const createFailureMessage = (error: unknown): string => {
 }
 
 /**
- * The new-user path: create a site, publish DNS, deploy.
+ * The new-user path: create a site, publish DNS, deploy it in Qinto, then finish here.
  *
  * The step lives on the server (`onboarding.step`), so a merchant who closes the app during DNS
  * propagation — which can take hours — returns to the DNS step rather than to the beginning.
@@ -161,25 +162,30 @@ export function OnboardingScreen({ status, teamId, onDone, onCancel }: Props) {
     })
   }
 
-  const deploy = () => {
+  const finish = () => {
     if (domainId === null) {
       return
     }
 
     void act(async () => {
       try {
-        const result = await api<{ tracking: { live: boolean; error?: string } }>('/api/setup/deploy', {
+        const result = await api<{ tracking: { live: boolean; error?: string } }>('/api/setup/select', {
           method: 'POST',
           body: { teamId, domainId }
         })
         if (result.tracking.live) {
-          toast.success('Deployed. Tracking is on.')
+          toast.success('Site selected. Tracking is on.')
         } else {
-          toast.info(result.tracking.error ?? 'Deployed. Tracking starts once the site is serving.')
+          toast.info(result.tracking.error ?? 'Site selected. Tracking starts once the site is serving.')
         }
         await onDone()
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'Could not deploy the site')
+        if (error instanceof ApiError && error.error === 'not_deployed') {
+          toast.info('Not deployed yet. Finish the Deploy step in Qinto, then try again.')
+
+          return
+        }
+        toast.error(error instanceof Error ? error.message : 'Could not finish setup')
       }
     })
   }
@@ -190,7 +196,7 @@ export function OnboardingScreen({ status, teamId, onDone, onCancel }: Props) {
         <div className='card-header'>
           <div className='stack'>
             <h1>Set up a Qinto site</h1>
-            <p className='muted'>Three steps, and you only do the middle one outside this app.</p>
+            <p className='muted'>Three steps. DNS and deploying happen outside this app.</p>
           </div>
           <button type='button' className='btn-secondary' onClick={onCancel}>
             Back
@@ -223,7 +229,15 @@ export function OnboardingScreen({ status, teamId, onDone, onCancel }: Props) {
         />
       ) : null}
 
-      {step === 'deploy' ? <DeployStep handle={status.store.handle} busy={busy} onDeploy={deploy} onBack={() => setStep('dns')} /> : null}
+      {step === 'deploy' && domainId !== null ? (
+        <DeployStep
+          handle={status.store.handle}
+          deployUrl={qintoDeployUrl(status.qintoPortalUrl, teamId, domainId)}
+          busy={busy}
+          onFinish={finish}
+          onBack={() => setStep('dns')}
+        />
+      ) : null}
     </div>
   )
 }

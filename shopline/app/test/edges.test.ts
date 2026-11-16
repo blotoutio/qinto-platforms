@@ -830,15 +830,11 @@ describe('the last few branches', () => {
     }
   })
 
-  it('reports a deploy whose pixel push failed rather than claiming tracking is live', async () => {
+  it('reports a select whose pixel push failed rather than claiming tracking is live', async () => {
     const stubs = stubFetch((request) => {
       const { pathname } = new URL(request.url)
       if (pathname.endsWith('/pixel/update_config.json')) {
         return new Response('nope', { status: 500 })
-      }
-
-      if (pathname.endsWith('/deploy')) {
-        return jsonResponse({ deploymentId: 'dep', version: '1.0.0' })
       }
 
       if (pathname.endsWith('/snippet')) {
@@ -853,7 +849,7 @@ describe('the last few branches', () => {
     })
 
     try {
-      const { body } = await callJson<{ tracking: { live: boolean; error?: string } }>('/api/setup/deploy', {
+      const { body } = await callJson<{ tracking: { live: boolean; error?: string } }>('/api/setup/select', {
         method: 'POST',
         body: { teamId: TEAM, domainId: DOMAIN }
       })

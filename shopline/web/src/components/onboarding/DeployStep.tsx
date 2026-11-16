@@ -1,22 +1,30 @@
+import { openInQinto } from '../../lib/qinto'
 import { AppEmbedNote } from '../AppEmbedNote'
 
 type Props = {
   handle: string
+  deployUrl: string
   busy: boolean
-  onDeploy: () => void
+  onFinish: () => void
   onBack: () => void
 }
 
-/** Step three: publish to Qinto's edge, which also selects the site and starts tracking. */
-export function DeployStep({ handle, busy, onDeploy, onBack }: Props) {
+/** Step three: deploying is Qinto's (it handles billing), so the merchant does it there and comes back. */
+export function DeployStep({ handle, deployUrl, busy, onFinish, onBack }: Props) {
   return (
     <>
       <div className='card'>
-        <h2>Deploy the site</h2>
-        <p className='muted'>This publishes your site to Qinto's edge and selects it for this store. Tracking turns on when it finishes.</p>
+        <h2>Deploy the site in Qinto</h2>
+        <p className='muted'>
+          Qinto deploys the site and may ask for a payment method on your team first. Then come back here: this selects the site for this
+          store and turns tracking on.
+        </p>
         <div className='row'>
-          <button type='button' className='btn-primary' onClick={onDeploy} disabled={busy}>
-            {busy ? 'Deploying…' : 'Deploy and start tracking'}
+          <button type='button' className='btn-secondary' onClick={() => openInQinto(deployUrl)}>
+            Deploy in Qinto
+          </button>
+          <button type='button' className='btn-primary' onClick={onFinish} disabled={busy}>
+            {busy ? 'Checking…' : 'I have deployed it'}
           </button>
           <button type='button' className='btn-secondary' onClick={onBack} disabled={busy}>
             Back to DNS

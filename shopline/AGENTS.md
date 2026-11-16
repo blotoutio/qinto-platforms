@@ -37,6 +37,13 @@ one, no response body carries one.
 We ship exactly `read_pixels`, `write_pixels` and `read_store_information` (for `merchants/shop.json`).
 Over-requesting is penalized at app review (review standard §3.2), and every extra scope is a bigger blast radius on a stolen token.
 
+## Never deploy a Qinto site
+
+Deploying is Qinto's, because it gates billing. The app may create a site, run DNS and change its
+settings and origins, but never calls `/deploy`. A site still `pending` was never deployed: `/api/setup/select`
+answers `409 not_deployed` and the app deep-links the merchant to the site's settings page in Qinto
+(`/team/{teamId}/domain/{domainId}/settings/general`), whose Deployment card deploys it.
+
 ## Before finishing, run `pnpm full-check`
 
 `format` → `typecheck` → `db:check` → `test:coverage`, stopping at the first failure. It is part of

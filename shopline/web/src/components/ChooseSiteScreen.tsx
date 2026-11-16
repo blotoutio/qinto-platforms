@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { ApiError, api } from '../lib/api'
 import { toast } from '../lib/app-bridge'
+import { openInQinto, qintoDeployUrl } from '../lib/qinto'
 import type { Site, Status, TeamWithSites } from '../lib/types'
 import { ReapproveTeams } from './ReapproveTeams'
 
@@ -112,7 +113,7 @@ export function ChooseSiteScreen({ status, onDone, onCreateSite }: Props) {
             <p className='muted'>
               {anySites
                 ? 'Pick the Qinto site this store should send events to. Tracking turns on as soon as you choose.'
-                : 'You have no Qinto sites yet. Create one and this app will walk you through DNS and deployment.'}
+                : 'You have no Qinto sites yet. Create one and this app will walk you through DNS; you deploy it in Qinto.'}
             </p>
           </div>
         </div>
@@ -153,14 +154,24 @@ export function ChooseSiteScreen({ status, onDone, onCreateSite }: Props) {
                 </div>
                 <div className='row'>
                   {siteBadge(site)}
-                  <button
-                    type='button'
-                    className='btn-primary'
-                    onClick={() => void select(team.teamId, site)}
-                    disabled={selecting !== null}
-                  >
-                    {selecting === site.domainId ? 'Selecting…' : 'Use this site'}
-                  </button>
+                  {site.status === 'pending' ? (
+                    <button
+                      type='button'
+                      className='btn-secondary'
+                      onClick={() => openInQinto(qintoDeployUrl(status.qintoPortalUrl, team.teamId, site.domainId))}
+                    >
+                      Deploy in Qinto
+                    </button>
+                  ) : (
+                    <button
+                      type='button'
+                      className='btn-primary'
+                      onClick={() => void select(team.teamId, site)}
+                      disabled={selecting !== null}
+                    >
+                      {selecting === site.domainId ? 'Selecting…' : 'Use this site'}
+                    </button>
+                  )}
                 </div>
               </div>
             ))}

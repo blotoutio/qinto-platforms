@@ -147,15 +147,6 @@ export const shareSiteDns = (
   return blotoutApi<{ sent: number }>(config, token, path, { method: 'POST', body: input })
 }
 
-export const deploySite = (
-  config: AppConfig,
-  token: string,
-  teamId: string,
-  domainId: string
-): Promise<{ deploymentId: string; version: string }> => {
-  return blotoutApi(config, token, `/teams/${teamId}/domains/${domainId}/deploy`, { method: 'POST' })
-}
-
 export type DeliveryMode = 'domain' | 'development_url'
 
 /**

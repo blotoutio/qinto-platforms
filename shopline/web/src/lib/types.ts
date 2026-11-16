@@ -58,6 +58,8 @@ export type Status = {
     lastPushReason: PushFailureReason | null
     settingsPushedAt: string | null
   }
+  /** Where the merchant deploys a site; this app never deploys. */
+  qintoPortalUrl: string
   onboarding: null | {
     step: OnboardingStep
     teamId: string | null

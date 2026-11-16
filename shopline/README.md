@@ -12,7 +12,7 @@ turns on first-party event tracking on their storefront.
 SHOPLINE Admin (iframe)
    └─ web/ SPA ──session token──▶ app/ Worker (Hono) ──▶ D1
                                         ├──▶ SHOPLINE Admin API (pixel config, shop info)
-                                        └──▶ Blotout platform API (teams, sites, DNS, deploy)
+                                        └──▶ Blotout platform API (teams, sites, DNS, settings)
 
 Storefront page
    └─ SHOPLINE Pixel sandbox (auto-activated on install)

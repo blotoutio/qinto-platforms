@@ -188,7 +188,7 @@ describe('the DNS step', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Skip for now' }))
 
-    expect(await screen.findByText('Deploy the site')).toBeTruthy()
+    expect(await screen.findByText('Deploy the site in Qinto')).toBeTruthy()
     expect(http.calls.find((call) => call.path === '/api/setup/onboarding')).toMatchObject({
       method: 'PUT',
       body: { step: 'deploy', teamId: 'team-1', domainId: 'domain-9', rootDomain: 'shop.example.com' }
@@ -211,7 +211,7 @@ describe('the DNS step', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Check DNS' }))
 
-    expect(await screen.findByText('Deploy the site')).toBeTruthy()
+    expect(await screen.findByText('Deploy the site in Qinto')).toBeTruthy()
     expect(hostCalls.toasts.some((toast) => toast.message === 'DNS verified')).toBe(true)
   })
 
@@ -255,7 +255,7 @@ describe('the DNS step', () => {
 
     expect(await screen.findByText(/needs no DNS/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Check DNS' }))
-    expect(await screen.findByText('Deploy the site')).toBeTruthy()
+    expect(await screen.findByText('Deploy the site in Qinto')).toBeTruthy()
   })
 
   it('reloads the records on request', async () => {
@@ -281,10 +281,10 @@ describe('the deploy step', () => {
   const atDeploy = (route: Route) =>
     show(chooseStatus({ onboarding: { step: 'deploy', teamId: 'team-1', domainId: 'domain-9', rootDomain: 'shop.example.com' } }), route)
 
-  it('deploys and reports that tracking is on', async () => {
-    const { onDone } = atDeploy(() => ({ body: { deployment: { version: '1.4.0' }, deliveryLive: true, tracking: { live: true } } }))
+  it('finishes and reports that tracking is on', async () => {
+    const { onDone } = atDeploy(() => ({ body: { deliveryLive: true, tracking: { live: true } } }))
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Deploy and start tracking' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'I have deployed it' }))
 
     await waitFor(() => {
       expect(hostCalls.toasts.some((toast) => toast.message.includes('Tracking is on'))).toBe(true)
@@ -293,9 +293,9 @@ describe('the deploy step', () => {
   })
 
   it('says why tracking is not on yet rather than claiming it is', async () => {
-    atDeploy(() => ({ body: { deployment: { version: '1' }, deliveryLive: false, tracking: { live: false, error: 'push failed' } } }))
+    atDeploy(() => ({ body: { deliveryLive: false, tracking: { live: false, error: 'push failed' } } }))
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Deploy and start tracking' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'I have deployed it' }))
 
     await waitFor(() => {
       expect(hostCalls.toasts.some((toast) => toast.message === 'push failed')).toBe(true)
@@ -303,19 +303,40 @@ describe('the deploy step', () => {
   })
 
   it('falls back to plain copy when the backend gives no reason', async () => {
-    atDeploy(() => ({ body: { deployment: { version: '1' }, deliveryLive: false, tracking: { live: false } } }))
+    atDeploy(() => ({ body: { deliveryLive: false, tracking: { live: false } } }))
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Deploy and start tracking' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'I have deployed it' }))
 
     await waitFor(() => {
       expect(hostCalls.toasts.some((toast) => toast.message.includes('once the site is serving'))).toBe(true)
     })
   })
 
-  it('reports a failed deploy', async () => {
+  it("deep-links the merchant to Qinto's deploy page for this site, since this app never deploys", async () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    atDeploy(() => ({ body: {} }))
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Deploy in Qinto' }))
+
+    expect(open).toHaveBeenCalledWith('https://portal.qinto.tech/team/team-1/domain/domain-9/settings/general', '_blank', 'noopener')
+    open.mockRestore()
+  })
+
+  it('asks the merchant to deploy in Qinto first when the site is not deployed yet', async () => {
+    const { onDone } = atDeploy(() => ({ status: 409, body: { error: 'not_deployed' } }))
+
+    fireEvent.click(await screen.findByRole('button', { name: 'I have deployed it' }))
+
+    await waitFor(() => {
+      expect(hostCalls.toasts.some((toast) => toast.message.includes('Finish the Deploy step in Qinto'))).toBe(true)
+    })
+    expect(onDone).not.toHaveBeenCalled()
+  })
+
+  it('reports a failed finish', async () => {
     atDeploy(() => ({ status: 502, body: { error: 'qinto_api', code: 'host_not_ready', detail: 'the host is not ready' } }))
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Deploy and start tracking' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'I have deployed it' }))
 
     await waitFor(() => {
       expect(hostCalls.toasts.some((toast) => toast.message === 'the host is not ready')).toBe(true)

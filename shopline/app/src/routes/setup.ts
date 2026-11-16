@@ -2,17 +2,7 @@ import type { Context } from 'hono'
 import { Hono } from 'hono'
 
 import type { BlotoutSite } from '../blotout/client'
-import {
-  BlotoutApiError,
-  checkSiteDns,
-  createSite,
-  deploySite,
-  getSite,
-  getSiteDns,
-  getSiteSnippet,
-  listTeams,
-  shareSiteDns
-} from '../blotout/client'
+import { BlotoutApiError, checkSiteDns, createSite, getSite, getSiteDns, getSiteSnippet, listTeams, shareSiteDns } from '../blotout/client'
 import { loadConnection } from '../blotout/connection-store'
 import { isBlotoutId, isUuid } from '../config'
 import {
@@ -79,7 +69,7 @@ const wantedOrigins = async (c: Context<AppEnv>): Promise<string[]> => {
 /**
  * Lets the storefront's pages open the site's socket.
  *
- * Never fails the select or deploy it rides on: the site is chosen either way, and the Site card
+ * Never fails the select it rides on: the site is chosen either way, and the Site card
  * reads the list live and offers a retry. `null` means the list could not be read or written.
  */
 const allowStoreOrigins = async (c: Context<AppEnv>, token: string, teamId: string, site: BlotoutSite): Promise<OriginsStatus | null> => {
@@ -115,6 +105,10 @@ setup.post('/api/setup/select', requireSession, async (c) => {
 
   const grant = await loadConnection(db, config, handle)
   const site = await getSite(config, grant.accessToken, teamId, domainId)
+  // Deploying is Qinto's (it gates billing); the merchant deploys there, then selects here.
+  if (site.status === 'pending') {
+    return c.json({ error: 'not_deployed' }, 409)
+  }
   const delivery = await resolveDeliveryHost(config, grant.accessToken, teamId, site)
 
   await saveSelection(db, handle, {
@@ -272,50 +266,6 @@ setup.post('/api/setup/dns/check', requireSession, async (c) => {
   }
 
   return c.json(dns)
-})
-
-/**
- * Step three: publish the site to the edge, then select it.
- *
- * Deploy and select are one call because a deployed site the merchant has not selected is a dead
- * end — they came here to finish setup, not to admire a site.
- */
-setup.post('/api/setup/deploy', requireSession, async (c) => {
-  const ref = readSiteRef(await c.req.json<SiteRefBody>())
-  if (ref === undefined) {
-    return c.json({ error: 'teamId and domainId must be Blotout ids' }, 400)
-  }
-
-  const config = c.get('config')
-  const db = c.get('db')
-  const handle = c.get('handle')
-  const grant = await loadConnection(db, config, handle)
-
-  const deployment = await deploySite(config, grant.accessToken, ref.teamId, ref.domainId)
-  const site = await getSite(config, grant.accessToken, ref.teamId, ref.domainId)
-  const delivery = await resolveDeliveryHost(config, grant.accessToken, ref.teamId, site)
-
-  await saveSelection(db, handle, {
-    teamId: ref.teamId,
-    teamName: await teamNameFor(config, grant.accessToken, ref.teamId),
-    domainId: ref.domainId,
-    siteName: site.name,
-    deliveryHost: delivery.host,
-    usingDevelopmentUrl: delivery.usingDevelopmentUrl,
-    qintoUserId: grant.userId
-  })
-  await clearOnboarding(db, handle)
-
-  const push = await setTrackingEnabled(db, config, { handle, enabled: true, actor: c.get('staffSubject') })
-  const origins = await allowStoreOrigins(c, grant.accessToken, ref.teamId, site)
-
-  return c.json({
-    deployment,
-    origins,
-    deliveryHost: delivery.host,
-    deliveryLive: site.deliveryLive,
-    tracking: { live: site.deliveryLive && push.pushed, ...(push.pushed ? {} : { error: push.error }) }
-  })
 })
 
 /** Records which step the merchant is on, so a reload does not restart the flow. */

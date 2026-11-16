@@ -18,7 +18,7 @@ export const status = new Hono<AppEnv>()
 /**
  * Which screen the app shows.
  *
- * `connect` — no Blotout grant. `onboarding` — connected, walking the create/DNS/deploy chain.
+ * `connect` — no Blotout grant. `onboarding` — connected, walking the create/DNS chain, then deploying in Qinto.
  * `choose` — connected, no site chosen yet. `ready` — a site is chosen.
  */
 export type AppScreen = 'connect' | 'choose' | 'onboarding' | 'ready'
@@ -82,6 +82,8 @@ export type StatusPayload = {
     lastPushReason: PushFailureReason | null
     settingsPushedAt: string | null
   }
+  /** Where the merchant deploys a site; this app never deploys. */
+  qintoPortalUrl: string
   onboarding: { step: OnboardingStep; teamId: string | null; domainId: string | null; rootDomain: string | null } | null
 }
 
@@ -327,6 +329,7 @@ status.get('/api/status', requireSession, async (c) => {
       lastPushReason: pixel?.lastPushReason ?? null,
       settingsPushedAt: pixel?.settingsPushedAt?.toISOString() ?? null
     },
+    qintoPortalUrl: config.blotoutAuthorizeOrigin,
     onboarding:
       onboardingRow === undefined
         ? null
