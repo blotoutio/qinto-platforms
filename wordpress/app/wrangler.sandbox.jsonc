@@ -1,0 +1,32 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Sandbox: the sandbox WordPress plugin build against the Qinto sandbox. The D1 id is empty
+  // until the database is created (`wrangler d1 create blotout-consent-wordpress-sandbox`).
+  "name": "blotout-consent-wordpress-sandbox",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-22",
+  "observability": { "enabled": true },
+  // Hourly: sweep expired rows and keep idle Qinto grants alive; see `services/scheduled.ts`.
+  "triggers": { "crons": ["17 * * * *"] },
+  "routes": [{ "pattern": "consent-wordpress-sandbox.qinto.tech", "custom_domain": true }],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "blotout-consent-wordpress-sandbox",
+      "database_id": "",
+      "migrations_dir": "drizzle/migrations"
+    }
+  ],
+  // POST /register is the one unauthenticated write; keyed by client IP.
+  "ratelimits": [
+    { "name": "REGISTER_LIMITER", "namespace_id": "1002", "simple": { "limit": 10, "period": 60 } },
+    // DNS share sends email; keyed by registration.
+    { "name": "SHARE_LIMITER", "namespace_id": "1005", "simple": { "limit": 3, "period": 60 } }
+  ],
+  "vars": {
+    "QINTO_API_ORIGIN": "https://api.qinto.tech",
+    "QINTO_AUTHORIZE_ORIGIN": "https://portal.qinto.tech"
+  }
+  // Secrets, set once with `wrangler secret put <NAME> --config wrangler.sandbox.jsonc` and never by the
+  // workflow: QINTO_CLIENT_ID, QINTO_CLIENT_SECRET, TOKEN_KEK.
+}

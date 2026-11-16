@@ -1,0 +1,23 @@
+{
+  "name": "blotout-consent-wordpress",
+  "version": "1.0.0",
+  "license": "UNLICENSED",
+  "private": true,
+  "packageManager": "pnpm@11.13.1",
+  "scripts": {
+    "format": "biome check --write .",
+    "lint": "biome check .",
+    "typecheck": "pnpm -r --no-bail typecheck",
+    "db:check": "pnpm --filter app db:check",
+    "test": "pnpm -r --no-bail test",
+    "test:coverage": "pnpm -r --no-bail test:coverage",
+    "full-check": "pnpm format && pnpm typecheck && pnpm db:check && pnpm test:coverage",
+    "plugin:install": "docker run --rm -v \"$PWD/plugin\":/app -w /app composer:2 composer install --no-interaction --ignore-platform-req=php",
+    "plugin:test": "for v in 7.4 8.2; do docker run --rm -v \"$PWD/plugin\":/p -w /p php:$v-cli vendor/bin/phpunit || exit 1; done",
+    "plugin:lint": "docker run --rm -v \"$PWD/plugin\":/p -w /p php:8.2-cli vendor/bin/phpcs"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "catalog:",
+    "typescript": "catalog:"
+  }
+}

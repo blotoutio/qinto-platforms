@@ -1,0 +1,27 @@
+<script id="blotout-consent-mode-bootstrap">
+/* Blotout Consent — Google Consent Mode v2 bootstrap. Loaded before GTM/gtag. */
+window.dataLayer = window.dataLayer || [];
+function gtag(){ dataLayer.push(arguments); }
+gtag('consent', 'default', {
+  ad_storage: 'denied',
+  ad_user_data: 'denied',
+  ad_personalization: 'denied',
+  analytics_storage: 'denied',
+  wait_for_update: 2000
+});
+function blotoutToGtagConsent(){
+  var has = (typeof window.wp_has_consent === 'function') ? window.wp_has_consent : function(){ return false; };
+  var marketing = has('marketing');
+  var statistics = has('statistics');
+  return {
+    ad_storage: marketing ? 'granted' : 'denied',
+    ad_user_data: marketing ? 'granted' : 'denied',
+    ad_personalization: marketing ? 'granted' : 'denied',
+    analytics_storage: statistics ? 'granted' : 'denied'
+  };
+}
+/* WP Consent API dispatches `wp_listen_for_consent_change` on each wp_set_consent. */
+document.addEventListener('wp_listen_for_consent_change', function(){ gtag('consent', 'update', blotoutToGtagConsent()); });
+document.addEventListener('wp_consent_type_defined', function(){ gtag('consent', 'update', blotoutToGtagConsent()); });
+</script>
+		

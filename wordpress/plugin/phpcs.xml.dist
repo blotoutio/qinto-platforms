@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<ruleset name="Blotout Consent">
+  <description>WordPress Coding Standards, PHP 7.4+.</description>
+  <file>.</file>
+  <exclude-pattern>vendor/*</exclude-pattern>
+  <exclude-pattern>tests/*</exclude-pattern>
+  <exclude-pattern>assets/*</exclude-pattern>
+  <arg name="extensions" value="php" />
+  <arg value="sp" />
+
+  <config name="minimum_supported_wp_version" value="5.8" />
+  <config name="testVersion" value="7.4-" />
+
+  <rule ref="WordPress">
+    <!-- PSR-4 class files under src/ (Class.php), not class-*.php. -->
+    <exclude name="WordPress.Files.FileName" />
+  </rule>
+  <rule ref="PHPCompatibilityWP" />
+  <rule ref="WordPress.WP.I18n">
+    <properties>
+      <property name="text_domain" type="array" value="blotout-consent" />
+    </properties>
+  </rule>
+  <rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+    <properties>
+      <property name="prefixes" type="array" value="blotout_consent,Blotout\Consent,BLOTOUT_CONSENT" />
+    </properties>
+  </rule>
+</ruleset>

@@ -62,13 +62,19 @@ runs:
       env:
         TYPE: ${{ inputs.type }}
       run: |
-        toml="../${{ inputs.app }}.app.${TYPE}.toml"
-        app_url="$(sed -n 's/^appUrl = "\(.*\)"$/\1/p' "$toml")"
-        [ -n "$app_url" ] || { echo "::error::appUrl is empty in $toml"; exit 1; }
-        echo "app-url=${app_url%/}" >> "$GITHUB_OUTPUT"
-
         file="wrangler.${TYPE}.jsonc"
         [ -f "$file" ] || { echo "::error::$file does not exist"; exit 1; }
+
+        # appUrl from the app's .toml (Shopline), else the custom domain route in the wrangler config.
+        toml="../${{ inputs.app }}.app.${TYPE}.toml"
+        if [ -f "$toml" ]; then
+          app_url="$(sed -n 's/^appUrl = "\(.*\)"$/\1/p' "$toml")"
+        else
+          app_url="https://$(sed -n 's/.*"pattern": "\([^"]*\)".*/\1/p' "$file" | head -n 1)"
+        fi
+        [ "$app_url" != "https://" ] && [ -n "$app_url" ] || { echo "::error::no appUrl in $toml or route in $file"; exit 1; }
+        echo "app-url=${app_url%/}" >> "$GITHUB_OUTPUT"
+
         db="$(node -e '
           const src = require("fs").readFileSync(process.argv[1], "utf8")
           const json = src.replace(/("(?:[^"\\]|\\.)*")|\/\/[^\n]*/g, (m, s) => s ?? "")
