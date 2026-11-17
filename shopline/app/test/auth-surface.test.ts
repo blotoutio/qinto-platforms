@@ -28,7 +28,6 @@ const GUARDED = [
   ['POST', '/api/setup/site'],
   ['GET', '/api/setup/dns'],
   ['POST', '/api/setup/dns/check'],
-  ['POST', '/api/setup/deploy'],
   ['PUT', '/api/setup/onboarding'],
   ['PUT', '/api/settings/tracking'],
   ['POST', '/api/settings/retry-push'],

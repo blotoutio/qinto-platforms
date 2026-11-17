@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Site, TeamWithSites } from '../lib/types'
@@ -63,6 +63,21 @@ describe('listing', () => {
 
     expect(await screen.findByText('Serving')).toBeTruthy()
     expect(screen.getByText('Not deployed')).toBeTruthy()
+  })
+
+  it('sends a never-deployed site to Qinto to deploy rather than selecting it', async () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    show([{ ...TEAM, sites: [{ ...SITE, deliveryLive: false, status: 'pending' }] }])
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Deploy in Qinto' }))
+
+    expect(screen.queryByRole('button', { name: 'Use this site' })).toBeNull()
+    expect(open).toHaveBeenCalledWith(
+      `https://portal.qinto.tech/team/${TEAM.teamId}/domain/${SITE.domainId}/settings/general`,
+      '_blank',
+      'noopener'
+    )
+    open.mockRestore()
   })
 
   it('distinguishes a deployed site that has stopped serving', async () => {

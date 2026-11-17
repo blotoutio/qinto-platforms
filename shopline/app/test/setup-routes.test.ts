@@ -73,7 +73,6 @@ const DEFAULT_ROUTES: { match: (pathname: string, method: string) => boolean; re
         message: 'Waiting for the CNAME.'
       })
   },
-  { match: (path) => path.endsWith('/deploy'), respond: () => jsonResponse({ deploymentId: 'dep-1', version: '1.4.0' }) },
   { match: (path) => path.endsWith('/pixel/update_config.json'), respond: () => jsonResponse({ data: {} }) }
 ]
 
@@ -539,17 +538,17 @@ describe('the new-user chain', () => {
     }
   })
 
-  it('deploys, selects the site and clears onboarding', async () => {
+  it('selects a site deployed in Qinto and clears onboarding, never deploying it', async () => {
     const stubs = blotoutStub()
     try {
-      const { status, body } = await callJson<{ deployment: { version: string }; tracking: { live: boolean } }>('/api/setup/deploy', {
+      const { status, body } = await callJson<{ tracking: { live: boolean } }>('/api/setup/select', {
         method: 'POST',
         body: { teamId: TEAM, domainId: DOMAIN }
       })
 
       expect(status).toBe(200)
-      expect(body.deployment.version).toBe('1.4.0')
       expect(body.tracking.live).toBe(true)
+      expect(stubs.calls.some((request) => new URL(request.url).pathname.endsWith('/deploy'))).toBe(false)
     } finally {
       stubs.restore()
     }
@@ -559,8 +558,22 @@ describe('the new-user chain', () => {
     await expect(findPixelState(db, HANDLE)).resolves.toMatchObject({ trackingEnabled: true, pushedEnabled: true })
   })
 
-  it('refuses a deploy with no site reference', async () => {
-    expect((await call('/api/setup/deploy', { method: 'POST', body: {} })).status).toBe(400)
+  it('refuses a site that was never deployed, selecting nothing', async () => {
+    const stubs = blotoutStub({ [`/domains/${DOMAIN}`]: () => jsonResponse({ site: { ...SITE, status: 'pending', deliveryLive: false } }) })
+    try {
+      const { status, body } = await callJson('/api/setup/select', { method: 'POST', body: { teamId: TEAM, domainId: DOMAIN } })
+
+      expect(status).toBe(409)
+      expect(body).toEqual({ error: 'not_deployed' })
+    } finally {
+      stubs.restore()
+    }
+
+    await expect(findSelection(db, HANDLE)).resolves.toBeUndefined()
+  })
+
+  it('refuses a select with no site reference', async () => {
+    expect((await call('/api/setup/select', { method: 'POST', body: {} })).status).toBe(400)
   })
 })
 

@@ -106,7 +106,6 @@ const blotoutStub = (request: Request, path: string): Response | null => {
         failureKind: 'missing',
         message: 'add the record'
       }),
-    [`/teams/${TEAM}/domains/${DOMAIN}/deploy`]: () => jsonResponse({ site: site() }),
     [`/teams/${TEAM}/domains/${DOMAIN}/snippet`]: () =>
       jsonResponse({ host: DELIVERY, usingDevelopmentUrl: true, snippet: '<script></script>' })
   }
@@ -321,8 +320,8 @@ describe('the whole merchant journey', () => {
       })
       expect(checked.body.valid).toBe(true)
 
-      // Step 3 — deploy, which selects the site and turns tracking on in one move.
-      const deployed = await callJson<{ tracking: { live: boolean } }>('/api/setup/deploy', {
+      // Step 3 — the merchant deploys in Qinto; selecting the site turns tracking on.
+      const deployed = await callJson<{ tracking: { live: boolean } }>('/api/setup/select', {
         method: 'POST',
         body: { teamId: TEAM, domainId: DOMAIN }
       })
