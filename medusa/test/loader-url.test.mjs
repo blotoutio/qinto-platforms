@@ -11,8 +11,8 @@ import assert from "node:assert/strict"
  *
  * This mirrors the component's exact expression so a regression there fails here.
  */
-const build = (qintoUrl) => {
-  const src = JSON.stringify(new URL("/q.js", qintoUrl).toString())
+const build = (firstPartyOrigin) => {
+  const src = JSON.stringify(new URL("/q.js", firstPartyOrigin).toString())
 
   return `d.head.appendChild(s)})(window,document,${src},"qinto");`
 }

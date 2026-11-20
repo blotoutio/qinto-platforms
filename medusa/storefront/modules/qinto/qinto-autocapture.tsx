@@ -2,14 +2,13 @@
 
 import { usePathname, useSearchParams } from "next/navigation"
 import { Suspense, useEffect, useRef, useState } from "react"
-import { getQintoUrl, identify, setQintoUrl, track } from "../../lib/qinto/client"
+import { identify, tagReady, track } from "../../lib/qinto/client"
 import {
   cartEvent,
   cartTraits,
   compact,
   customerAliases,
   customerTraits,
-  orderIdOf,
   orderTraits,
   purchase,
   viewContent,
@@ -17,15 +16,16 @@ import {
 } from "../../lib/qinto/mapping"
 import {
   NO_CART,
+  asSnapshot,
   diffEvents,
   reportChoice,
   shippingChoice,
   snapshotOf,
   type CheckoutState,
-  type Snapshot,
 } from "../../lib/qinto/cart-diff"
+import { purchaseAction, remember } from "../../lib/qinto/dedupe"
 import { paymentOptionOfFrame, paymentOptionOfLabel } from "../../lib/qinto/payment-option"
-import { traitsFrom } from "../../lib/qinto/form-traits"
+import { filledIdentity, IDENTITY_NAMES, traitsFrom } from "../../lib/qinto/form-traits"
 import {
   isCheckoutPath,
   orderIdOfPath,
@@ -52,9 +52,13 @@ import type { HttpTypes } from "@medusajs/types"
 const BACKEND = process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || "http://localhost:9000"
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY || ""
 
-/** Mirrors `qinto-analytics.tsx` — see the note there on why the URL is serialised, not spliced. */
-const loader = (qintoUrl: string) => {
-  const src = JSON.stringify(new URL("/q.js", qintoUrl).toString())
+/**
+ * The collector's loader snippet. The script URL is built with `URL` and serialised with
+ * `JSON.stringify` rather than spliced in as text, so a stored value can never break out of the
+ * string literal.
+ */
+const loader = (firstPartyOrigin: string) => {
+  const src = JSON.stringify(new URL("/q.js", firstPartyOrigin).toString())
 
   return `
 (function(w,d,u,g){if(g in w){var o=w[g];
@@ -76,18 +80,27 @@ d.head.appendChild(s)})(window,document,${src},"qinto");
  * window, and losing dedupe is better than losing the page.
  */
 const SENT_KEY = "qinto_sent_v1"
+
+/** The cart as last seen, in every tab, so one tab's add is not reported again by another. */
 const CART_KEY = "qinto_cart_v1"
 
-/**
- * Whether the previous route was already the checkout.
- *
- * Kept in storage rather than a ref so it survives a reload: refreshing the payment step is not
- * arriving at the checkout, and a ref would forget that and report it as one.
- */
-const ON_CHECKOUT_KEY = "qinto_on_checkout_v1"
+/** Orders whose Purchase this browser has sent, in every tab and after a restart. */
+const PURCHASED_KEY = "qinto_purchased_v1"
 
-/** The shipping and payment choices already reported for the current cart. */
-const CHECKOUT_KEY = "qinto_checkout_v1"
+/** How long a Purchase sent before the tag connected keeps waiting for it, to claim the order. */
+const LATE_CLAIM_MS = 60_000
+
+/** Fingerprint of the checkout details last identified, so unchanged details are not resent. */
+const FILLED_KEY = "qinto_filled_v1"
+
+// Long enough that tabbing through the address fields sends one identify, not one per field.
+const FILLED_DELAY_MS = 1500
+
+/** The first non-empty value of any field with this name, inside a `<form>` or not. */
+const fieldValue = (name: string): string | undefined =>
+  Array.from(document.getElementsByName(name), (el) => (el as HTMLInputElement).value).find(
+    (value) => typeof value === "string" && value.trim() !== ""
+  )
 
 const PAYMENT_CONTROLS = '[role="tab"], [role="radio"], input[type="radio"], button'
 
@@ -113,22 +126,45 @@ const labelOf = (control: Element): string | null => {
 const shopperActed = (): boolean =>
   (navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation?.isActive ?? true
 
-const readStore = <T,>(key: string, fallback: T): T => {
+/**
+ * Where values go when storage throws (blocked, or a private mode that refuses it): dedupe still
+ * holds for the life of the page, across its client-side navigations, instead of per render.
+ */
+const memory = new Map<string, unknown>()
+
+const read = <T,>(area: () => Storage, key: string, fallback: T): T => {
   try {
-    const raw = sessionStorage.getItem(key)
+    const raw = area().getItem(key)
 
     return raw === null ? fallback : (JSON.parse(raw) as T)
   } catch {
-    return fallback
+    return memory.has(key) ? (memory.get(key) as T) : fallback
   }
 }
 
-const writeStore = (key: string, value: unknown): void => {
+const write = (area: () => Storage, key: string, value: unknown): void => {
   try {
-    sessionStorage.setItem(key, JSON.stringify(value))
+    area().setItem(key, JSON.stringify(value))
   } catch {
-    // Private window, or storage disabled. Dedupe degrades to per-render; nothing else breaks.
+    memory.set(key, value)
   }
+}
+
+const readStore = <T,>(key: string, fallback: T): T => read(() => sessionStorage, key, fallback)
+const writeStore = (key: string, value: unknown): void => write(() => sessionStorage, key, value)
+
+/**
+ * `localStorage`: shared by every tab of this browser and kept after a restart. Used for what must
+ * happen once per order or cart, not once per tab. Same fallbacks as above.
+ */
+const readShared = <T,>(key: string, fallback: T): T => read(() => localStorage, key, fallback)
+const writeShared = (key: string, value: unknown): void => write(() => localStorage, key, value)
+
+/** Whether this browser already sent this order's Purchase, in any tab or an older version's. */
+const purchased = (key: string): boolean => {
+  const shared = readShared<unknown>(PURCHASED_KEY, [])
+
+  return (Array.isArray(shared) && shared.includes(key)) || readStore<string[]>(SENT_KEY, []).includes(key)
 }
 
 const once = (key: string, run: () => void): void => {
@@ -169,12 +205,20 @@ const Capture = ({ routes }: { routes?: RouteConfig }) => {
   const searchParams = useSearchParams()
   const lastPageView = useRef<string | null>(null)
   const busy = useRef(false)
+  // Traits of the cart as last read, so a field edit needs no request of its own.
+  const savedTraits = useRef<Traits>({})
+  // The shipping and payment steps already reported for this cart. Per page on purpose: a reload or
+  // a new tab may report them again, but switching options on the same page does not.
+  const reportedSteps = useRef<CheckoutState | null>(null)
+  // Whether the previous route of this page was the checkout. A ref, not storage, on purpose: a
+  // reload of the checkout is a new InitiateCheckout, as on Shopify.
+  const wasOnCheckout = useRef(false)
 
   // Read through a ref so the listeners registered once below always see the current routes.
   const routesRef = useRef(routes)
   routesRef.current = routes
 
-  /** Sends a checkout step's event once per choice, and only while the shopper is in the checkout. */
+  /** Sends a checkout step's event once per cart per page, and only while the shopper is in the checkout. */
   const reportStep = (
     cart: HttpTypes.StoreCart | null,
     step: "shipping" | "payment",
@@ -185,15 +229,35 @@ const Capture = ({ routes }: { routes?: RouteConfig }) => {
       return
     }
 
-    const next = reportChoice(cart, readStore<CheckoutState | null>(CHECKOUT_KEY, null), step, choice)
+    const next = reportChoice(cart, reportedSteps.current, step, choice)
     if (next !== null) {
-      writeStore(CHECKOUT_KEY, next)
+      reportedSteps.current = next
       track(event, cartEvent(cart))
     }
   }
 
   const reportShipping = (cart: HttpTypes.StoreCart | null): void =>
     reportStep(cart, "shipping", cart === null ? "" : shippingChoice(cart), "AddShippingInfo")
+
+  /**
+   * Identifies the shopper from the checkout as soon as the details are filled in, no submit needed.
+   *
+   * Many checkouts have no `<form>` and pay from a button, and an address picked from a search box
+   * never reaches an input, so the visible fields are merged over the cart as last read. Every save
+   * is a Server Action that re-reads the cart, so that copy is current without a request here. Traits
+   * only, no alias: nothing is verified until the order exists.
+   */
+  const identifyFilled = (): void => {
+    if (!onCheckoutNow(routesRef.current)) {
+      return
+    }
+
+    const next = filledIdentity(savedTraits.current, traitsFrom(fieldValue), readStore(FILLED_KEY, ""))
+    if (next !== null) {
+      writeStore(FILLED_KEY, next.key)
+      identify(next.traits)
+    }
+  }
 
   /** Re-reads the cart and emits whatever changed. Serialised: overlapping reads double-count. */
   const syncCart = async (): Promise<HttpTypes.StoreCart | null> => {
@@ -205,20 +269,21 @@ const Capture = ({ routes }: { routes?: RouteConfig }) => {
     try {
       const body = await context<{ cart: HttpTypes.StoreCart | null }>("kind=cart")
       const cart = body?.cart ?? null
+      savedTraits.current = cart === null ? {} : cartTraits(cart)
 
       if (cart === null) {
         // Recorded rather than ignored: this is the observation that lets the next sync report the
         // first add instead of treating it as a starting position.
-        writeStore(CART_KEY, NO_CART)
+        writeShared(CART_KEY, { ...NO_CART, at: Date.now() })
 
         return null
       }
 
       const next = snapshotOf(cart)
-      for (const event of diffEvents(cart, readStore<Snapshot | null>(CART_KEY, null), next)) {
+      for (const event of diffEvents(cart, asSnapshot(readShared<unknown>(CART_KEY, null)), next)) {
         track(event.name, event.properties)
       }
-      writeStore(CART_KEY, next)
+      writeShared(CART_KEY, { ...next, at: Date.now() })
 
       return cart
     } finally {
@@ -256,13 +321,12 @@ const Capture = ({ routes }: { routes?: RouteConfig }) => {
      *
      * The starter walks its steps by changing `?step=` on the same path, so a route change alone
      * says nothing. What matters is the transition: checkout reached from somewhere that was not
-     * checkout. Recorded for every route, not just checkout, or leaving and returning would look
-     * like staying.
+     * checkout, or the checkout page loaded afresh (a reload, a new tab). Recorded for every route,
+     * not just checkout, or leaving and returning would look like staying.
      */
     const onCheckout = isCheckoutPath(routes, rest, pathname)
-    const wasOnCheckout = readStore<boolean>(ON_CHECKOUT_KEY, false)
-    const enteredCheckout = onCheckout && !wasOnCheckout
-    writeStore(ON_CHECKOUT_KEY, onCheckout)
+    const enteredCheckout = onCheckout && !wasOnCheckout.current
+    wasOnCheckout.current = onCheckout
 
     void (async () => {
       const productHandle = productHandleOf(routes, rest, pathname)
@@ -291,31 +355,54 @@ const Capture = ({ routes }: { routes?: RouteConfig }) => {
         // and was reported as a starting position instead of an add.
       }
 
-      // `/order/<id>/confirmed` — the conversion.
+      // `/order/<id>/confirmed` — the conversion. Sent once per order, whichever tab, browser or
+      // device shows this page.
       else if (confirmedOrderId !== null) {
-        const body = await context<{ order: HttpTypes.StoreOrder | null }>(
-          `kind=order&id=${encodeURIComponent(confirmedOrderId)}`
-        )
-        const order = body?.order ?? null
-        if (order !== null) {
-          once(`Purchase:${orderIdOf(order)}`, () => {
-            // A placed order is a verified identity, so its email is aliased as well as sent as a
-            // trait — one of the three moments (login, sign-up, order) an alias is safe to send.
-            identify(orderTraits(order), { alias: [order.email] })
-            track("Purchase", purchase(order))
-          })
-        }
-
         // The cart is gone once an order exists; clearing the snapshot stops the next cart
         // being diffed against a dead one and reported as a pile of removals.
-        writeStore(CART_KEY, null)
+        writeShared(CART_KEY, null)
+
+        const key = `Purchase:${confirmedOrderId}`
+        if (purchased(key)) {
+          return
+        }
+
+        // The backend claim rides on the order read this page makes anyway. It is only asked for
+        // once the tag can send, so a blocked or failed tag never spends it.
+        const read = `kind=order&id=${encodeURIComponent(confirmedOrderId)}`
+        const ready = await tagReady()
+        const body = await context<{ order: HttpTypes.StoreOrder | null; first?: boolean | null }>(
+          ready ? `${read}&claim=1` : read
+        )
+        const order = body?.order ?? null
+        if (order === null) {
+          return
+        }
+
+        // Re-read after the wait: another view may have marked it meanwhile. Only a view without a
+        // claim answer defers to that mark; the claim's winner sends regardless (see purchaseAction).
+        const action = purchaseAction(body?.first, purchased(key))
+        writeShared(PURCHASED_KEY, remember(readShared<unknown>(PURCHASED_KEY, []), key))
+        if (action === "send") {
+          // A placed order is a verified identity, so its email is aliased as well as sent as a
+          // trait — one of the three moments (login, sign-up, order) an alias is safe to send.
+          identify(orderTraits(order), { alias: [order.email] })
+          track("Purchase", purchase(order))
+
+          // Sent unclaimed because the tag was slow: claim once it connects, so other devices skip.
+          // A blocked tag never connects, so it never claims and another device can still send.
+          if (!ready) {
+            void tagReady(LATE_CLAIM_MS).then((late) => (late ? context(`${read}&claim=1`) : null))
+          }
+        }
 
         return
       }
 
       const cart = await syncCart()
 
-      // Fired once per *arrival* at the checkout, and again every time the shopper comes back.
+      // Fired once per *arrival* at the checkout (including a reload of it), and again every time the
+      // shopper comes back.
       //
       // Not run through `once()`: returning to checkout later is a real second initiation and
       // should count. What is filtered out is movement *within* the checkout — address → delivery →
@@ -378,6 +465,12 @@ const Capture = ({ routes }: { routes?: RouteConfig }) => {
         return
       }
 
+      // The checkout's own fields go through the same check as a field edit, so a save sends nothing twice.
+      if (onCheckoutNow(routesRef.current)) {
+        identifyFilled()
+        return
+      }
+
       try {
         const data = new FormData(form)
         const traits = traitsFrom((name) => {
@@ -418,6 +511,32 @@ const Capture = ({ routes }: { routes?: RouteConfig }) => {
     return () => document.removeEventListener("submit", onSubmit, true)
   }, [])
 
+  // A text field fires `change` when the shopper leaves it, so nothing is read per keystroke.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    const onChange = (event: Event) => {
+      const name = (event.target as HTMLInputElement | null)?.name
+      if (name === undefined || !IDENTITY_NAMES.has(name)) {
+        return
+      }
+
+      if (timer !== null) {
+        clearTimeout(timer)
+      }
+      timer = setTimeout(identifyFilled, FILLED_DELAY_MS)
+    }
+
+    document.addEventListener("change", onChange, true)
+
+    return () => {
+      document.removeEventListener("change", onChange, true)
+      if (timer !== null) {
+        clearTimeout(timer)
+      }
+    }
+  }, [])
+
   /** AddPaymentInfo: a real click on a payment option, or focus moving into a provider's card form. */
   useEffect(() => {
     const report = async (option: string | null): Promise<void> => {
@@ -425,8 +544,9 @@ const Capture = ({ routes }: { routes?: RouteConfig }) => {
         return
       }
 
-      const body = await context<{ cart: HttpTypes.StoreCart | null }>("kind=cart")
-      reportStep(body?.cart ?? null, "payment", option, "AddPaymentInfo")
+      const cart = (await context<{ cart: HttpTypes.StoreCart | null }>("kind=cart"))?.cart ?? null
+      savedTraits.current = cart === null ? {} : cartTraits(cart)
+      reportStep(cart, "payment", option, "AddPaymentInfo")
     }
 
     const onClick = (event: Event) => {
@@ -477,7 +597,17 @@ const Capture = ({ routes }: { routes?: RouteConfig }) => {
       }
       // Coalesced: one interaction can fire several actions, and the cart is only settled after
       // the last of them.
-      timer = setTimeout(() => void syncCart().then(reportShipping), 250)
+      timer = setTimeout(
+        () =>
+          void syncCart().then((cart) => {
+            reportShipping(cart)
+            // A saved address (say, picked from a search box) is only visible here.
+            if (cart !== null) {
+              identifyFilled()
+            }
+          }),
+        250
+      )
     }
 
     let observer: PerformanceObserver | null = null
@@ -521,32 +651,26 @@ const Capture = ({ routes }: { routes?: RouteConfig }) => {
 }
 
 const QintoAutoCapture = ({ routes }: { routes?: RouteConfig } = {}) => {
-  const [ready, setReady] = useState(getQintoUrl() !== null)
+  // The store's first-party domain, as the https origin the backend reports for this storefront's
+  // publishable key. The backend is the only source, so Admin → Blotout is always the whole truth.
+  const [origin, setOrigin] = useState<string | null>(null)
   const injected = useRef(false)
 
   useEffect(() => {
-    if (getQintoUrl() !== null) {
-      setReady(true)
-
-      return
-    }
-
     void fetch(`${BACKEND}/store/qinto/config`, {
       headers: PUBLISHABLE_KEY ? { "x-publishable-api-key": PUBLISHABLE_KEY } : {},
     })
       .then((response) => (response.ok ? response.json() : null))
-      .then((config: { enabled?: boolean; qinto_url?: string } | null) => {
-        if (config?.enabled && config.qinto_url) {
-          setQintoUrl(config.qinto_url)
-          setReady(true)
+      .then((config: { enabled?: boolean; first_party_domain?: string } | null) => {
+        if (config?.enabled && config.first_party_domain) {
+          setOrigin(config.first_party_domain)
         }
       })
       .catch(() => undefined)
   }, [])
 
   useEffect(() => {
-    const url = getQintoUrl()
-    if (!ready || injected.current || url === null) {
+    if (injected.current || origin === null) {
       return
     }
 
@@ -554,7 +678,7 @@ const QintoAutoCapture = ({ routes }: { routes?: RouteConfig } = {}) => {
 
     let snippet: string
     try {
-      snippet = loader(url)
+      snippet = loader(origin)
     } catch {
       return
     }
@@ -563,9 +687,9 @@ const QintoAutoCapture = ({ routes }: { routes?: RouteConfig } = {}) => {
     script.id = "qinto-loader"
     script.textContent = snippet
     document.head.appendChild(script)
-  }, [ready])
+  }, [origin])
 
-  if (!ready) {
+  if (origin === null) {
     return null
   }
 

@@ -14,21 +14,6 @@ import type { Properties, Traits } from "./mapping"
  *    run exactly as before.
  */
 
-/**
- * Set once by the loader, from whatever the backend reports.
- *
- * Deliberately not read from `process.env` here: the backend is the source of truth, so a merchant
- * who connects or switches site in the admin does not also have to edit a storefront env file and
- * redeploy. `NEXT_PUBLIC_QINTO_URL` still wins if it is set, for anyone who wants to pin it.
- */
-let qintoUrl: string | null = process.env.NEXT_PUBLIC_QINTO_URL || null
-
-export const setQintoUrl = (url: string | null): void => {
-  qintoUrl = url
-}
-
-export const getQintoUrl = (): string | null => qintoUrl
-
 type QintoRuntime = {
   track: (
     event: string,
@@ -247,6 +232,37 @@ export const identify = (traits: Traits, options: { alias?: (string | null | und
   }
 
   sendIdentify(q, traits, aliases)
+}
+
+/**
+ * `true` once the tag has loaded and connected, `false` if it has not within `ms` (blocked, failed
+ * or slow). `q.js` keeps the loader's `window.qinto` object and sets `ready` on it, a promise that
+ * settles when the connection is up; before it arrives, `ready` is undefined.
+ */
+export const tagReady = async (ms = 10_000): Promise<boolean> => {
+  const deadline = Date.now() + ms
+
+  for (;;) {
+    const ready = (runtime() as { ready?: PromiseLike<unknown> } | null)?.ready
+    if (typeof ready?.then === "function") {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const late = new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(false), deadline - Date.now())
+      })
+
+      return Promise.race([Promise.resolve(ready).then(() => true, () => false), late]).finally(() => {
+        if (timer !== undefined) {
+          clearTimeout(timer)
+        }
+      })
+    }
+
+    if (Date.now() >= deadline) {
+      return false
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
 }
 
 /**

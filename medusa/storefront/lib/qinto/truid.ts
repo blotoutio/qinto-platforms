@@ -67,12 +67,13 @@ export const registrableDomain = (host: string): string | null => {
  *
  * Scoped to the storefront's own registrable domain so every subdomain shares one id: a shopper who
  * lands on `shop.com`, browses `www.shop.com` and pays on `checkout.shop.com` stays one visitor
- * rather than three. It also means the id is already in place when the merchant later points Qinto
- * at a host on their own domain, with no second cookie and no migration.
+ * rather than three. It also means the id is already in place when the merchant later serves the
+ * collector from their own first-party domain, with no second cookie and no migration.
  *
- * Deriving this from the request host rather than the Qinto URL is what makes it work before any DNS
- * setup. A domain taken from the collector's host is refused by the browser whenever the storefront
- * does not sit under it, which on a store reporting to `xyz.dev.qinto.tech` is always.
+ * Deriving this from the request host rather than the collector's host is what makes it work
+ * before any DNS setup. A domain taken from the collector's host is refused by the browser
+ * whenever the storefront does not sit under it, which on a store reporting to a development host
+ * (`xyz.dev.qinto.tech`) is always.
  *
  * `undefined` is returned for hosts that cannot carry a domain scope at all: `localhost`, IP
  * literals, and a bare public suffix. Those keep a host-only cookie, which is still first-party and

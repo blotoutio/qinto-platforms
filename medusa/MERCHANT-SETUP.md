@@ -1,6 +1,6 @@
 # Setting up @blotout/platform-medusa for MedusaJS
 
-This gets a MedusaJS store sending events to Qinto.
+This gets a MedusaJS store sending events to the Blotout Platform.
 
 ## What you need
 
@@ -31,8 +31,8 @@ npx medusa db:migrate
 npm run dev
 ```
 
-That creates one table, `qinto_connection`, holding the Qinto URL and an on/off flag. No shopper data
-goes in it.
+That creates one table, `qinto_channel_connection`, holding a first-party domain and an on/off flag
+per sales channel. No shopper data goes in it.
 
 ## Storefront
 
@@ -79,19 +79,23 @@ of your product, cart or checkout components get touched, so restyling them can'
 
 ## Connect
 
-Open the site in the Qinto portal, go to Developer tools and copy the site's Qinto URL. Then in Medusa
-Admin go to Blotout, paste it and press Save.
+Open the site in the Blotout Platform and copy its first-party domain (for example
+`data.yourstore.com`). Then in Medusa Admin go to Blotout, paste it into **First-party domain** and
+press Save. Saving turns that store's tracking on.
 
-The badge reads "Sending events" once both halves are live. The Tracking switch pauses sending without
-losing the URL.
+The badge reads "Sending" once both halves are live. The Tracking switch pauses sending without
+losing the domain, and asks you to confirm before it turns off.
 
-There's nothing to configure on the storefront. It fetches the URL from the backend at runtime, so the
-merchant can change it later without a redeploy. If you'd rather pin it, set `NEXT_PUBLIC_QINTO_URL`
-and it wins.
+Running several storefronts on one backend? Give each its own sales channel, publishable key and
+site in the Blotout Platform. Blotout lists every sales channel; paste each store's first-party
+domain with **Edit**. A store without a domain sends nothing.
+
+There's nothing to configure on the storefront. It fetches the domain from the backend at runtime,
+so the merchant can change it later without a redeploy.
 
 ## Check it works
 
-Start both apps and open the storefront. In the Qinto portal go to Analytics, then Real time, and
+Start both apps and open the storefront. In the Blotout Platform go to Analytics, then Real time, and
 press Start. It doesn't stream until you do.
 
 Load a page, open a product, add it to the cart and go to checkout. You should see `PageView`,
@@ -105,10 +109,10 @@ Load a page, open a product, add it to the cart and go to checkout. You should s
 | `ViewContent` | A product page opens |
 | `AddToCart` | A line is added or its quantity goes up |
 | `RemoveFromCart` | A line is removed or its quantity goes down |
-| `InitiateCheckout` | A shopper reaches checkout from another page, every time, but not when moving between steps inside checkout |
-| `AddShippingInfo` | Inside checkout, the cart has a delivery address and a shipping option. Again if the shopper switches option |
-| `AddPaymentInfo` | Inside checkout, the shopper clicks a payment option or clicks into the card form. Again if they switch |
-| `Purchase` | The order confirmation page renders |
+| `InitiateCheckout` | A shopper reaches checkout from another page or reloads it, every time, but not when moving between steps inside checkout |
+| `AddShippingInfo` | Inside checkout, the cart has a delivery address and a shipping option. Once per page: switching option does not send it again, a reload can |
+| `AddPaymentInfo` | Inside checkout, the shopper clicks a payment option or clicks into the card form. Once per page: switching does not send it again, a reload can |
+| `Purchase` | The order confirmation page renders. Once per order, whichever tab, browser or device shows it |
 | `CompleteRegistration` | A new account is created |
 
 Traits get identified from the cart, the completed order, the signed-in customer and the checkout
@@ -126,7 +130,7 @@ or an IP the cookie stays host-only, because neither can carry a domain scope.
 If your suffix isn't one we recognise, or you want a narrower scope, set `QINTO_COOKIE_DOMAIN` on the
 storefront and it's used as given. It has to start with a dot and your storefront has to sit under it.
 
-Ask whoever runs your Qinto account to confirm the Medusa tag's `cookieMapKey` is set to `truid`,
+Ask whoever runs your Blotout Platform account to confirm the Medusa tag's `cookieMapKey` is set to `truid`,
 otherwise the cookie gets issued and ignored.
 
 ## If something doesn't work
@@ -206,10 +210,12 @@ npm update @blotout/platform-medusa   # both apps
 npx medusa db:migrate                         # backend only
 ```
 
-Keep both apps on the same version. Migrations are additive.
+Keep both apps on the same version. Upgrading from 0.1.x to 0.2.0 drops the old single store-wide
+URL: every store sends nothing until its first-party domain is entered in Admin. See the changelog.
 
-To remove it, drop it from `plugins[]` on the backend and uninstall. The `qinto_connection` table
-stays until you drop it yourself, so an accidental uninstall doesn't lose the merchant's connection.
+To remove it, drop it from `plugins[]` on the backend and uninstall. The `qinto_channel_connection`
+table stays until you drop it yourself, so an accidental uninstall doesn't lose the merchant's
+connection.
 On the storefront remove the `transpilePackages` entry, the mount and its import, delete
 `src/app/api/qinto/`, then uninstall.
 

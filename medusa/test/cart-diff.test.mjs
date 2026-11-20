@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert"
 import { test } from "node:test"
-import { NO_CART, diffEvents, reportChoice, shippingChoice, snapshotOf } from "../.test-build/cart-diff.js"
+import { NO_CART, SNAPSHOT_MAX_AGE_MS, asSnapshot, diffEvents, reportChoice, shippingChoice, snapshotOf } from "../.test-build/cart-diff.js"
 
 /**
  * The cart diff is where every bug found during live verification lived, so each rule below is
@@ -111,7 +111,7 @@ test("the shipping choice needs both an option and a street address", () => {
   assert.equal(shippingChoice(cart([], { shipping_methods: [method("so_a")], shipping_address: ADDRESS })), "so_a")
 })
 
-test("a choice is reported once, and again only when it changes", () => {
+test("a step is reported once per cart, whatever the shopper picks after", () => {
   const c = cart([line("l1", 1)])
 
   assert.equal(reportChoice(c, null, "shipping", ""), null)
@@ -120,8 +120,8 @@ test("a choice is reported once, and again only when it changes", () => {
   assert.deepEqual(standard, { cartId: "cart_1", shipping: "so_standard", payment: "" })
   assert.equal(reportChoice(c, standard, "shipping", "so_standard"), null)
 
-  // Medusa replaces the method, so a count would not move; the option does.
-  assert.equal(reportChoice(c, standard, "shipping", "so_express").shipping, "so_express")
+  // Once per cart: switching to another option later is not a second AddShippingInfo.
+  assert.equal(reportChoice(c, standard, "shipping", "so_express"), null)
 })
 
 test("shipping and payment are remembered separately, and per cart", () => {
@@ -130,7 +130,8 @@ test("shipping and payment are remembered separately, and per cart", () => {
 
   assert.deepEqual(both, { cartId: "cart_1", shipping: "so_a", payment: "card" })
   assert.equal(reportChoice(c, both, "payment", "card"), null)
-  assert.equal(reportChoice(c, both, "payment", "paypal").payment, "paypal")
+  // Card -> PayPal -> Card used to send three AddPaymentInfo for one checkout.
+  assert.equal(reportChoice(c, both, "payment", "paypal"), null)
 
   // A new cart starts clean.
   assert.deepEqual(reportChoice({ ...c, id: "cart_2" }, both, "payment", "card"), {
@@ -154,4 +155,39 @@ test("currency is carried from the cart, upper-cased", () => {
   const after = cart([line("l1", 2)])
 
   assert.equal(diffEvents(after, before, snapshotOf(after))[0].properties.currency, "EUR")
+})
+
+test("a stored state that is not the expected shape never blocks a step", () => {
+  const c = cart([line("l1", 1)])
+  for (const junk of [{ cartId: "cart_1" }, { cartId: "cart_1", payment: 7 }, "x", 5, []]) {
+    assert.equal(reportChoice(c, junk, "payment", "card")?.payment, "card", JSON.stringify(junk))
+  }
+})
+
+test("a stored snapshot is used only when it has the right shape", () => {
+  const s = snapshotOf(cart([line("l1", 2)]))
+  assert.deepEqual(asSnapshot(s), s)
+  assert.deepEqual(asSnapshot(NO_CART), NO_CART)
+
+  // Shared storage: anything else is "never looked", which emits nothing rather than throwing.
+  for (const junk of [null, undefined, "x", 3, [], {}, { cartId: "cart_1" }, { cartId: 5, lines: [] },
+    { cartId: "cart_1", lines: [{ id: "l1" }] }, { cartId: "cart_1", lines: [null] }]) {
+    assert.equal(asSnapshot(junk), null, JSON.stringify(junk))
+  }
+})
+
+test("a cart another tab already reported is not reported again by this one", () => {
+  // Tab A adds an item and stores the snapshot; tab B, sharing it, sees the same cart: no events.
+  const c = cart([line("l1", 1)])
+  const shared = snapshotOf(c)
+  assert.deepEqual(diffEvents(c, asSnapshot(JSON.parse(JSON.stringify(shared))), snapshotOf(c)), [])
+})
+
+test("a shared snapshot older than a day is treated as never looked", () => {
+  const now = 1_000_000_000_000
+  const s = { ...snapshotOf(cart([line("l1", 1)])), at: now - SNAPSHOT_MAX_AGE_MS - 1 }
+  assert.equal(asSnapshot(s, now), null)
+  assert.deepEqual(asSnapshot({ ...s, at: now - 60_000 }, now)?.cartId, "cart_1")
+  // Written without a time (an older copy of the plugin): still used.
+  assert.equal(asSnapshot(snapshotOf(cart([line("l1", 1)])), now)?.cartId, "cart_1")
 })

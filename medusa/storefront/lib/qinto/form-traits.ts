@@ -33,6 +33,36 @@ export const IDENTITY_FIELDS: Record<keyof Traits, readonly string[]> = {
   country: ["shipping_address.country_code", "billing_address.country_code", "country_code"],
 }
 
+export const IDENTITY_NAMES: ReadonlySet<string> = new Set(Object.values(IDENTITY_FIELDS).flat())
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+// A short fingerprint, so storage records what was sent without holding the details themselves.
+const fingerprint = (text: string): string => {
+  let hash = 5381
+  for (let i = 0; i < text.length; i++) {
+    hash = ((hash << 5) + hash + text.charCodeAt(i)) | 0
+  }
+
+  return (hash >>> 0).toString(36)
+}
+
+/** Traits for a filled-in checkout: saved cart values under typed ones, or `null` with no identifier yet or nothing new. */
+export const filledIdentity = (
+  saved: Traits,
+  typed: Traits,
+  lastKey: string
+): { traits: Traits; key: string } | null => {
+  const traits = { ...saved, ...typed }
+  if (!EMAIL.test(traits.email ?? "") && traits.phone === undefined) {
+    return null
+  }
+
+  const key = fingerprint(JSON.stringify(Object.entries(traits).sort()))
+
+  return key === lastKey ? null : { traits, key }
+}
+
 export const traitsFrom = (read: (name: string) => string | undefined): Traits => {
   const pick = (names: readonly string[]): string | undefined => {
     for (const name of names) {

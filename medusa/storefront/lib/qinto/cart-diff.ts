@@ -28,6 +28,8 @@ export type Line = {
 export type Snapshot = {
   /** `null` records "we looked and there was no cart" — which is what makes a first add reportable. */
   cartId: string | null
+  /** When it was stored, so a copy left in shared storage from an old visit is not diffed against. */
+  at?: number
   currency?: string
   lines: Line[]
 }
@@ -36,6 +38,26 @@ export type Snapshot = {
 export const NO_CART: Snapshot = { cartId: null, lines: [] }
 
 export type DerivedEvent = { name: string; properties: Properties }
+
+const isLine = (value: unknown): value is Line => {
+  const line = value as Line | null
+  return typeof line?.id === "string" && typeof line.quantity === "number" && typeof line.unitPrice === "number"
+}
+
+/**
+ * After this long a stored snapshot is a starting position again. Every page view refreshes it, so
+ * only a return after a long absence is affected, and that first view emits nothing either way.
+ */
+export const SNAPSHOT_MAX_AGE_MS = 24 * 60 * 60 * 1000
+
+/** A snapshot read back from shared storage, or `null` when it is not one or too old (never looked). */
+export const asSnapshot = (value: unknown, now: number = Date.now()): Snapshot | null => {
+  const s = value as Snapshot | null
+  const cartIdOk = s?.cartId === null || typeof s?.cartId === "string"
+  const fresh = typeof s?.at !== "number" || now - s.at <= SNAPSHOT_MAX_AGE_MS
+
+  return cartIdOk && fresh && Array.isArray(s?.lines) && s.lines.every(isLine) ? s : null
+}
 
 export const snapshotOf = (cart: HttpTypes.StoreCart): Snapshot => ({
   cartId: cart.id,
@@ -121,14 +143,23 @@ export const shippingChoice = (cart: HttpTypes.StoreCart): string =>
     ? (cart.shipping_methods ?? []).map((method) => method.shipping_option_id).sort().join(",")
     : ""
 
-/** The state after reporting `choice`, or `null` when it is empty or already reported for this cart. */
+/**
+ * The state after reporting `choice`, or `null` when it is empty or this step was already reported
+ * for this cart. Once per cart, not per choice: Card, then PayPal, then Card is one AddPaymentInfo.
+ */
 export const reportChoice = (
   cart: HttpTypes.StoreCart,
-  previous: CheckoutState | null,
+  previous: unknown,
   step: "shipping" | "payment",
   choice: string
 ): CheckoutState | null => {
-  const state = previous?.cartId === cart.id ? previous : { cartId: cart.id, shipping: "", payment: "" }
+  // Only a value of the right shape counts as reported.
+  const stored = previous as Partial<CheckoutState> | null
+  const text = (value: unknown): string => (typeof value === "string" ? value : "")
+  const state: CheckoutState =
+    stored?.cartId === cart.id
+      ? { cartId: cart.id, shipping: text(stored.shipping), payment: text(stored.payment) }
+      : { cartId: cart.id, shipping: "", payment: "" }
 
-  return choice === "" || choice === state[step] ? null : { ...state, [step]: choice }
+  return choice === "" || state[step] !== "" ? null : { ...state, [step]: choice }
 }

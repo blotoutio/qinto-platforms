@@ -32,7 +32,7 @@ import {
  * and hands the browser back the objects it needs to derive every event by itself. Adding a file
  * is not the same as editing eleven: nothing here changes a line of a merchant's existing code.
  *
- * It is deliberately read-only and returns nothing a shopper could not already see on the page —
+ * It is read-only apart from the Purchase claim (see `claim`), and returns nothing a shopper could not already see on the page —
  * and of that, only the fields tracking reads. See `lib/qinto/context` for both halves of that.
  */
 
@@ -58,6 +58,27 @@ const get = async <T,>(path: string, token?: string): Promise<T | null> => {
     })
 
     return response.ok ? ((await response.json()) as T) : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The Purchase claim for an order: `true` first view, `false` already claimed or not claimable,
+ * `null` no answer (an older backend without the route, or an error), which the browser treats as
+ * "decide locally". Read from any status: the route answers a refusal (404, 400) with
+ * `first: false`, while a backend without the route answers with no `first` at all.
+ */
+const claim = async (orderId: string): Promise<boolean | null> => {
+  try {
+    const response = await fetch(`${BACKEND}/store/qinto/orders/${encodeURIComponent(orderId)}/claim`, {
+      method: "POST",
+      headers: headers(),
+      cache: "no-store",
+    })
+    const body = (await response.json().catch(() => null)) as { first?: unknown } | null
+
+    return typeof body?.first === "boolean" ? body.first : null
   } catch {
     return null
   }
@@ -222,8 +243,13 @@ export const GET = async (request: Request) => {
         `/store/orders/${encodeURIComponent(id)}?fields=${encodeURIComponent(ORDER_FIELDS)}`,
         token
       )
+      const order = projectOrder(body?.order)
 
-      return NextResponse.json({ order: projectOrder(body?.order) }, { headers: noStore })
+      // Claimed in the same browser request as the read, so sending once per order costs no extra
+      // call. Only when asked: the browser asks once its tag has loaded and can actually send.
+      const first = order !== null && url.searchParams.get("claim") === "1" ? await claim(id) : null
+
+      return NextResponse.json({ order, first }, { headers: noStore })
     }
 
     return NextResponse.json({ error: "unknown kind" }, { status: 400, headers: noStore })
