@@ -1,0 +1,32 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Production: the wordpress.org plugin build against Qinto production. The D1 id is empty
+  // until the database is created (`wrangler d1 create blotout-consent-wordpress`).
+  "name": "blotout-consent-wordpress",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-22",
+  "observability": { "enabled": true },
+  // Hourly: sweep expired rows and keep idle Qinto grants alive; see `services/scheduled.ts`.
+  "triggers": { "crons": ["17 * * * *"] },
+  "routes": [{ "pattern": "consent-wordpress.blotout.io", "custom_domain": true }],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "blotout-consent-wordpress",
+      "database_id": "",
+      "migrations_dir": "drizzle/migrations"
+    }
+  ],
+  // POST /register is the one unauthenticated write; keyed by client IP.
+  "ratelimits": [
+    { "name": "REGISTER_LIMITER", "namespace_id": "1003", "simple": { "limit": 10, "period": 60 } },
+    // DNS share sends email; keyed by registration.
+    { "name": "SHARE_LIMITER", "namespace_id": "1006", "simple": { "limit": 3, "period": 60 } }
+  ],
+  "vars": {
+    "QINTO_API_ORIGIN": "https://qinto-api.blotout.io",
+    "QINTO_AUTHORIZE_ORIGIN": "https://platform.blotout.io"
+  }
+  // Secrets, set once with `wrangler secret put <NAME> --config wrangler.production.jsonc` and never by the
+  // workflow: QINTO_CLIENT_ID, QINTO_CLIENT_SECRET, TOKEN_KEK.
+}

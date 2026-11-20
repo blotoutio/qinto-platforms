@@ -1,0 +1,10 @@
+<script>
+(function(w,d,u,g){if(g in w){var o=w[g];
+if(!(o&&o._q))console.error("window."+g+" is already in use");return}
+var t={_q:1,q:[]};
+Object.defineProperty(w,g,{value:new Proxy(t,{get:function(o,n){
+if(typeof n!="string"||n=="then"||n=="ready"||n=="config"||n in o)return o[n];
+return o[n]=function(){var a=arguments;var p=new Promise(function(res,rej){o.q.push([n,a,res,rej])});p.catch(function(){});return p}}}),writable:true,enumerable:true,configurable:true});
+var s=d.createElement("script");s.async=true;s.src=u;s.dataset.qintoGlobal=g;
+d.head.appendChild(s)})(window,document,"https://cdn.example.com/q.js","qinto");
+</script>

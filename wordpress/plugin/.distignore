@@ -1,0 +1,10 @@
+# Development only: never in the shipped zip.
+.distignore
+.phpunit.result.cache
+AGENTS.md
+composer.json
+composer.lock
+phpcs.xml.dist
+phpunit.xml.dist
+tests
+vendor

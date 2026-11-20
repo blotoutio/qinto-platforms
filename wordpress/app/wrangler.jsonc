@@ -1,0 +1,29 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Local only: `wrangler dev` and the vitest pool read this file. Deployed Workers use
+  // `wrangler.sandbox.jsonc` and `wrangler.production.jsonc`; keep the three in step.
+  "name": "blotout-consent-wordpress-local",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-22",
+  "observability": { "enabled": true },
+  // Hourly: sweep expired rows and keep idle Qinto grants alive; see `services/scheduled.ts`.
+  "triggers": { "crons": ["17 * * * *"] },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "blotout-consent-wordpress",
+      "database_id": "local-blotout-consent-wordpress",
+      "migrations_dir": "drizzle/migrations"
+    }
+  ],
+  // POST /register is the one unauthenticated write; keyed by client IP.
+  "ratelimits": [
+    { "name": "REGISTER_LIMITER", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } },
+    // DNS share sends email; keyed by registration.
+    { "name": "SHARE_LIMITER", "namespace_id": "1004", "simple": { "limit": 3, "period": 60 } }
+  ],
+  "vars": {
+    "QINTO_API_ORIGIN": "https://api.qinto.tech",
+    "QINTO_AUTHORIZE_ORIGIN": "https://portal.qinto.tech"
+  }
+}
