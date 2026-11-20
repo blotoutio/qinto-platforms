@@ -1,6 +1,6 @@
 {
   "name": "@blotout/platform-medusa",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "Blotout's Medusa plugin: send storefront and order events to the Blotout Platform — first-party analytics and identity, set up per storefront in Medusa Admin.",
   "author": "Blotout",
   "license": "MIT",
