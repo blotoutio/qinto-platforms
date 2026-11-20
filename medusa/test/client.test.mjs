@@ -135,3 +135,31 @@ test("nothing throws at the caller when the runtime throws or lacks alias", asyn
   assert.doesNotThrow(() => client.identify({ email: "a@b.test" }, { alias: ["a@b.test"] }))
   await tick(10)
 })
+
+test("tagReady waits for the tag's own ready promise, as q.js sets it on the loader object", async () => {
+  // Before q.js: the loader's stub, whose `ready` is undefined.
+  window.qinto = { _q: 1, q: [] }
+  const waiting = client.tagReady(1_000)
+  await tick(150)
+  let resolve
+  window.qinto.ready = new Promise((r) => (resolve = r))
+  await tick(150)
+  resolve()
+  assert.equal(await waiting, true)
+})
+
+test("tagReady is false when the tag never loads (blocked) or fails to connect", async () => {
+  window.qinto = { _q: 1, q: [] }
+  assert.equal(await client.tagReady(300), false)
+
+  window.qinto = { _q: 1, q: [], ready: Promise.reject(new Error("no destination")) }
+  window.qinto.ready.catch(() => {})
+  assert.equal(await client.tagReady(300), false)
+
+  // Connected too slowly: give up at the deadline rather than hold the page's Purchase forever.
+  window.qinto = { _q: 1, q: [], ready: new Promise(() => {}) }
+  assert.equal(await client.tagReady(300), false)
+
+  delete window.qinto
+  assert.equal(await client.tagReady(200), false)
+})

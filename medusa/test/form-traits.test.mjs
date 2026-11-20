@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert"
 import { test } from "node:test"
-import { IDENTITY_FIELDS, traitsFrom } from "../.test-build/form-traits.js"
+import { IDENTITY_FIELDS, IDENTITY_NAMES, filledIdentity, traitsFrom } from "../.test-build/form-traits.js"
 
 const reader = (values) => (name) => values[name]
 
@@ -117,4 +117,42 @@ test("trait keys are Qinto's standard names, spelled literally", () => {
     traitsFrom(reader({ "shipping_address.postal_code": "2200" })).postal_code,
     "2200"
   )
+})
+
+test("filled checkout fields are sent without a form submit, typed values over saved ones", () => {
+  const next = filledIdentity(
+    { email: "old@localhost.test", state: "Canterbury Region", city: "Ashburton" },
+    { email: "ada@localhost.test", phone: "+6421123456" },
+    ""
+  )
+
+  assert.deepEqual(next?.traits, {
+    email: "ada@localhost.test",
+    state: "Canterbury Region",
+    city: "Ashburton",
+    phone: "+6421123456",
+  })
+})
+
+test("nothing is sent until there is an email or a phone", () => {
+  assert.equal(filledIdentity({ city: "Ashburton" }, { first_name: "Ada" }, ""), null)
+  assert.equal(filledIdentity({}, { email: "ada@" }, ""), null)
+  assert.notEqual(filledIdentity({}, { phone: "+6421123456" }, ""), null)
+})
+
+test("the same details are not sent twice, a change is", () => {
+  const first = filledIdentity({}, { email: "ada@localhost.test" }, "")
+  assert.equal(filledIdentity({}, { email: "ada@localhost.test" }, first.key), null)
+  assert.notEqual(filledIdentity({}, { email: "ada@localhost.test", phone: "+6421123456" }, first.key), null)
+})
+
+test("the key holds no personal data", () => {
+  const { key } = filledIdentity({}, { email: "ada@localhost.test" }, "")
+  assert.ok(!key.includes("ada"))
+})
+
+test("every allowlisted field name is recognised, nothing else", () => {
+  assert.ok(IDENTITY_NAMES.has("shipping_address.phone"))
+  assert.ok(IDENTITY_NAMES.has("email"))
+  assert.ok(!IDENTITY_NAMES.has("password"))
 })
